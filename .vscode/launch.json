@@ -6,12 +6,15 @@
       "name": "Python: Launch HomeAssistant",
       "type": "python",
       "request": "launch",
-      "program": "/usr/local/python/bin/hass",
+      "program": "/home/vscode/.local/bin/hass",
       "args": [
         "-c",
-        "${workspaceFolder}",
+        "${workspaceFolder}/config",
         "--debug"
       ],
+      "env": {
+        "PYTHONPATH": "${PYTHONPATH}:${PWD}/custom_components"
+      },
       "justMyCode": true
     }
   ]

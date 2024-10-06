@@ -1,0 +1,3 @@
+# Ensure unix line endings for scripts to work in devcontainer
+scripts/develop text eol=lf
+scripts/setup text eol=lf
