@@ -6,6 +6,7 @@
   "pre-commit": {
     "enabled": true
   },
+  "ignorePaths": [".github/linters/pyproject.toml"],
   "regexManagers": [
     {
       "fileMatch": ["manifest\\.json$"],
