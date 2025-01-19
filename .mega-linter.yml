@@ -22,7 +22,7 @@ PYTHON_RUFF_PRE_COMMANDS:
   # Update ruff
   - command: "pip install --upgrade ruff"
     continue_if_failed: false
-  - command: "wget -O .github/linters/hass-core-pyproject.toml https://raw.githubusercontent.com/home-assistant/core/refs/heads/dev/pyproject.toml"
+  - command: "wget -O .github/linters/pyproject.toml https://raw.githubusercontent.com/home-assistant/core/refs/heads/dev/pyproject.toml"
     continue_if_failed: false
 
 SARIF_REPORTER: true
