@@ -17,6 +17,9 @@ JSON_JSONLINT_ARGUMENTS: ["--comments"]
 JSON_PRETTIER_ARGUMENTS: ["--trailing-comma", "none"]
 
 PYTHON_RUFF_PRE_COMMANDS:
+  # Update ruff
+  - command: "curl -LsSf https://astral.sh/ruff/install.sh | sh"
+    continue_if_failed: false
   - command: "wget -O .github/linters/pyproject.toml https://raw.githubusercontent.com/home-assistant/core/refs/heads/dev/pyproject.toml"
     continue_if_failed: false
 
