@@ -13,6 +13,7 @@ jobs:
     name: Ruff
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: astral-sh/ruff-action@v3
         with:
           src: "./custom_components/xcomfort_bridge"
