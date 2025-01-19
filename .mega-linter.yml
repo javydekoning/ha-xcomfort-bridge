@@ -20,6 +20,8 @@ PYTHON_RUFF_PRE_COMMANDS:
   # Update ruff
   - command: "curl -LsSf https://astral.sh/ruff/install.sh | sh"
     continue_if_failed: false
+  - command: "source $HOME/.local/bin/env"
+    continue_if_failed: false
   - command: "wget -O .github/linters/pyproject.toml https://raw.githubusercontent.com/home-assistant/core/refs/heads/dev/pyproject.toml"
     continue_if_failed: false
 
