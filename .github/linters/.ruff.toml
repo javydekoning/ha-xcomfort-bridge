@@ -1,3 +1,6 @@
 # This extend HA general Ruff rules specifically for tests
 # https://raw.githubusercontent.com/home-assistant/core/refs/heads/dev/pyproject.toml
 extend = "./pyproject.toml"
+
+[tool.ruff]
+required-version = ">=0.8.0"
