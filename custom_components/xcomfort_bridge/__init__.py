@@ -31,7 +31,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Connects to bridge and loads devices."""
+    """Connect to bridge and loads devices."""
     config = entry.data
     identifier = str(config.get(CONF_IDENTIFIER))
     ip = str(config.get(CONF_IP_ADDRESS))
