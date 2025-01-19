@@ -114,11 +114,9 @@ class HASSXComfortRcTouch(ClimateEntity):
         setpoint = kwargs["temperature"]
         setpointrange = self._room.bridge.rctsetpointallowedvalues[RctMode(self.rctpreset)]
 
-        if setpointrange.Max < setpoint:
-            setpoint = setpointrange.Max
+        setpoint = min(setpointrange.Max, setpoint)
 
-        if setpoint < setpointrange.Min:
-            setpoint = setpointrange.Min
+        setpoint = max(setpoint, setpointrange.Min)
 
         payload = {
             "roomId": self._room.room_id,
@@ -176,8 +174,7 @@ class HASSXComfortRcTouch(ClimateEntity):
     def hvac_action(self):
         if self._state.power > 0:
             return HVACAction.HEATING
-        else:
-            return HVACAction.IDLE
+        return HVACAction.IDLE
 
     @property
     def max_temp(self):
