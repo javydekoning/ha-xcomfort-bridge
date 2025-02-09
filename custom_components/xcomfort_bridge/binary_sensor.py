@@ -1,3 +1,4 @@
+"""Binary sensor platform for xComfort integration with Home Assistant."""
 import logging
 
 from xcomfort.devices import DoorSensor, DoorWindowSensor, WindowSensor
@@ -24,6 +25,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         hass: Home Assistant instance
         entry: Config entry
         async_add_entities: Callback to add entities
+
     """
     hub = XComfortHub.get_hub(hass, entry)
 
