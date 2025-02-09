@@ -24,12 +24,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         await hub.has_done_initial_load.wait()
 
         devices = hub.devices
-
-        sensors = list()
-
-        for device in devices:
-            if isinstance(device, DoorWindowSensor):
-                sensors.append(XComfortDoorWindowSensor(hub, device))
+        sensors = []
+        
+        # Create a generator expression and extend the list with it
+        sensors.extend(
+            XComfortDoorWindowSensor(hub, device)
+            for device in devices
+            if isinstance(device, DoorWindowSensor)
+        )
 
         async_add_entities(sensors)
 

@@ -26,6 +26,13 @@ _LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
+    """Set up the xComfort climate platform.
+    
+    Args:
+        hass: Home Assistant instance
+        entry: Config entry
+        async_add_entities: Callback to add entities
+    """
     hub = XComfortHub.get_hub(hass, entry)
 
     async def _wait_for_hub_then_setup():
@@ -33,27 +40,35 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 
         rooms = hub.rooms
 
-        _LOGGER.debug(f"Found {len(rooms)} xcomfort rooms")
+        _LOGGER.debug("Found %d xcomfort rooms", len(rooms))
 
-        rcts = list()
+        rcts = []
         for room in rooms:
             if room.state.value is not None:
                 if room.state.value.setpoint is not None:
                     rct = HASSXComfortRcTouch(hass, hub, room)
                     rcts.append(rct)
 
-        _LOGGER.debug(f"Added {len(rcts)} rc touch units")
+        _LOGGER.debug("Added %d rc touch units", len(rcts))
         async_add_entities(rcts)
 
     entry.async_create_task(hass, _wait_for_hub_then_setup())
 
 
 class HASSXComfortRcTouch(ClimateEntity):
+    """Representation of an xComfort RC Touch climate device."""
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_hvac_modes = [HVACMode.AUTO]
     _attr_supported_features = SUPPORT_FLAGS
 
     def __init__(self, hass: HomeAssistant, hub: XComfortHub, room: Room):
+        """Initialize the climate device.
+        
+        Args:
+            hass: Home Assistant instance
+            hub: XComfort hub instance
+            room: Room instance from xComfort
+        """
         self.hass = hass
         self.hub = hub
         self._room = room
@@ -68,13 +83,20 @@ class HASSXComfortRcTouch(ClimateEntity):
         self._unique_id = f"climate_{DOMAIN}_{hub.identifier}-{room.room_id}"
 
     async def async_added_to_hass(self):
-        _LOGGER.debug(f"Added to hass {self._name} ")
+        """Run when entity about to be added to hass."""
+        
+        _LOGGER.debug("Added to hass %s", self._name)
         if self._room.state is None:
-            _LOGGER.debug(f"State is null for {self._name}")
+            _LOGGER.debug("State is null for %s", self._name)
         else:
             self._room.state.subscribe(lambda state: self._state_change(state))
 
     def _state_change(self, state):
+        """Handle state changes from the device.
+        
+        Args:
+            state: New state from the device
+        """
         self._state = state
 
         if self._state is not None:
@@ -85,12 +107,17 @@ class HASSXComfortRcTouch(ClimateEntity):
             self.temperature = state.temperature
             self.currentsetpoint = state.setpoint
 
-            _LOGGER.debug(f"State changed {self._name} : {state}")
+            _LOGGER.debug("State changed %s : %s", self._name, state)
 
             self.schedule_update_ha_state()
 
     async def async_set_preset_mode(self, preset_mode):
-        _LOGGER.debug(f"Set Preset mode {preset_mode}")
+        """Set new preset mode.
+        
+        Args:
+            preset_mode: The new preset mode to set
+        """
+        _LOGGER.debug("Set Preset mode %s", preset_mode)
 
         if preset_mode == "Cool":
             mode = RctMode.Cool
@@ -104,7 +131,12 @@ class HASSXComfortRcTouch(ClimateEntity):
             self.schedule_update_ha_state()
 
     async def async_set_temperature(self, **kwargs):
-        _LOGGER.debug(f"Set temperature {kwargs}")
+        """Set new target temperature.
+        
+        Args:
+            **kwargs: Keyword arguments containing the new temperature
+        """
+        _LOGGER.debug("Set temperature %s", kwargs)
 
         # TODO: Move everything below into Room class in xcomfort-python library.
         # Latest implementation in the base library is broken, so everything moved here
@@ -134,6 +166,7 @@ class HASSXComfortRcTouch(ClimateEntity):
 
     @property
     def device_info(self):
+        """Return device information about this entity."""
         return {
             "identifiers": {(DOMAIN, self.unique_id)},
             "name": self._name,
@@ -144,16 +177,20 @@ class HASSXComfortRcTouch(ClimateEntity):
 
     @property
     def name(self):
-        """Return the display name of this light."""
+        """Return the display name of this climate entity."""
         return self._name
 
     @property
     def unique_id(self):
-        """Return the unique ID."""
+        """Return a unique ID."""
         return self._unique_id
 
     @property
     def should_poll(self) -> bool:
+        """Return True if entity has to be polled for state.
+        
+        The xComfort integration pushes state updates, so polling is not needed.
+        """
         return False
 
     @property
@@ -163,6 +200,7 @@ class HASSXComfortRcTouch(ClimateEntity):
 
     @property
     def hvac_mode(self):
+        """Return current HVAC mode."""
         return HVACMode.AUTO
 
     @property
@@ -172,18 +210,21 @@ class HASSXComfortRcTouch(ClimateEntity):
 
     @property
     def hvac_action(self):
+        """Return the current running HVAC action."""
         if self._state.power > 0:
             return HVACAction.HEATING
         return HVACAction.IDLE
 
     @property
     def max_temp(self):
+        """Return the maximum temperature."""
         if self._state is None:
             return 40.0
         return self._room.bridge.rctsetpointallowedvalues[self.rctpreset].Max
 
     @property
     def min_temp(self):
+        """Return the minimum temperature."""
         if self._state is None:
             return 5.0
         return self._room.bridge.rctsetpointallowedvalues[self.rctpreset].Min
@@ -195,10 +236,12 @@ class HASSXComfortRcTouch(ClimateEntity):
 
     @property
     def preset_modes(self):
+        """Return available preset modes."""
         return ["Cool", PRESET_ECO, PRESET_COMFORT]
 
     @property
     def preset_mode(self):
+        """Return the current preset mode."""
         if self.rctpreset == RctMode.Cool:
             return "Cool"
         if self.rctpreset == RctMode.Eco:
