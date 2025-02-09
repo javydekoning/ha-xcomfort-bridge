@@ -27,7 +27,7 @@ _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     """Set up the xComfort climate platform.
-    
+
     Args:
         hass: Home Assistant instance
         entry: Config entry
@@ -63,7 +63,7 @@ class HASSXComfortRcTouch(ClimateEntity):
 
     def __init__(self, hass: HomeAssistant, hub: XComfortHub, room: Room):
         """Initialize the climate device.
-        
+
         Args:
             hass: Home Assistant instance
             hub: XComfort hub instance
@@ -84,7 +84,7 @@ class HASSXComfortRcTouch(ClimateEntity):
 
     async def async_added_to_hass(self):
         """Run when entity about to be added to hass."""
-        
+
         _LOGGER.debug("Added to hass %s", self._name)
         if self._room.state is None:
             _LOGGER.debug("State is null for %s", self._name)
@@ -93,7 +93,7 @@ class HASSXComfortRcTouch(ClimateEntity):
 
     def _state_change(self, state):
         """Handle state changes from the device.
-        
+
         Args:
             state: New state from the device
         """
@@ -113,7 +113,7 @@ class HASSXComfortRcTouch(ClimateEntity):
 
     async def async_set_preset_mode(self, preset_mode):
         """Set new preset mode.
-        
+
         Args:
             preset_mode: The new preset mode to set
         """
@@ -132,7 +132,7 @@ class HASSXComfortRcTouch(ClimateEntity):
 
     async def async_set_temperature(self, **kwargs):
         """Set new target temperature.
-        
+
         Args:
             **kwargs: Keyword arguments containing the new temperature
         """
@@ -188,7 +188,7 @@ class HASSXComfortRcTouch(ClimateEntity):
     @property
     def should_poll(self) -> bool:
         """Return True if entity has to be polled for state.
-        
+
         The xComfort integration pushes state updates, so polling is not needed.
         """
         return False
