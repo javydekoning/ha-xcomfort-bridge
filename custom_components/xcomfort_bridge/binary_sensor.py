@@ -50,12 +50,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 
 class XComfortDoorWindowSensor(BinarySensorEntity):
     """Representation of an xComfort door/window binary sensor."""
+
     def __init__(self, hub: XComfortHub, device: WindowSensor | DoorSensor) -> None:
         """Initialize the binary sensor.
 
         Args:
             hub: The xComfort hub instance
             device: The door or window sensor device
+
         """
         super().__init__()
         self._attr_name = device.name
@@ -73,6 +75,7 @@ class XComfortDoorWindowSensor(BinarySensorEntity):
         """Run when entity is added to Home Assistant.
 
         Sets up state change subscription if device state exists.
+
         """
         if self._device.state is not None:
             self._device.state.subscribe(lambda state: self._state_change(state))
@@ -82,6 +85,7 @@ class XComfortDoorWindowSensor(BinarySensorEntity):
 
         Args:
             state: New state value (True for open, False for closed)
+
         """
         self._attr_state = state
         self.schedule_update_ha_state()
@@ -93,5 +97,6 @@ class XComfortDoorWindowSensor(BinarySensorEntity):
         Returns:
             True if the sensor detects the door/window is open, False if closed,
             or None if state is unknown
+
         """
         return self._device and self._device.is_open

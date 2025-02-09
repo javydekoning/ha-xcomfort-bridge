@@ -1,3 +1,4 @@
+"""Climate platform for xComfort integration with Home Assistant."""
 import logging
 
 from xcomfort.bridge import RctMode, RctState, Room
@@ -32,6 +33,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         hass: Home Assistant instance
         entry: Config entry
         async_add_entities: Callback to add entities
+
     """
     hub = XComfortHub.get_hub(hass, entry)
 
@@ -57,6 +59,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 
 class HASSXComfortRcTouch(ClimateEntity):
     """Representation of an xComfort RC Touch climate device."""
+
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_hvac_modes = [HVACMode.AUTO]
     _attr_supported_features = SUPPORT_FLAGS
@@ -68,6 +71,7 @@ class HASSXComfortRcTouch(ClimateEntity):
             hass: Home Assistant instance
             hub: XComfort hub instance
             room: Room instance from xComfort
+
         """
         self.hass = hass
         self.hub = hub
@@ -96,6 +100,7 @@ class HASSXComfortRcTouch(ClimateEntity):
 
         Args:
             state: New state from the device
+
         """
         self._state = state
 
@@ -116,6 +121,7 @@ class HASSXComfortRcTouch(ClimateEntity):
 
         Args:
             preset_mode: The new preset mode to set
+
         """
         _LOGGER.debug("Set Preset mode %s", preset_mode)
 
@@ -135,6 +141,7 @@ class HASSXComfortRcTouch(ClimateEntity):
 
         Args:
             **kwargs: Keyword arguments containing the new temperature
+
         """
         _LOGGER.debug("Set temperature %s", kwargs)
 
@@ -231,7 +238,7 @@ class HASSXComfortRcTouch(ClimateEntity):
 
     @property
     def target_temperature(self):
-        """Returns the setpoint from RC touch, e.g. target_temperature"""
+        """Returns the setpoint from RC touch, e.g. target_temperature."""
         return self.currentsetpoint
 
     @property
