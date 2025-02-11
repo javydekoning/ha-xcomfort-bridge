@@ -255,3 +255,5 @@ class HASSXComfortRcTouch(ClimateEntity):
             return PRESET_ECO
         if self.rctpreset == RctMode.Comfort:
             return PRESET_COMFORT
+        _LOGGER.warning("Unexpected preset mode: %s", self.rctpreset)
+        return None

@@ -29,10 +29,13 @@ FULL_CONFIG = IDENTIFIER_AND_AUTH.extend({vol.Required(CONF_IP_ADDRESS): str})
 
 @config_entries.HANDLERS.register(DOMAIN)
 class XComfortBridgeConfigFlow(config_entries.ConfigFlow):
+    """Handle a config flow for Eaton xComfort Bridge."""
+
     VERSION = 1
     CONNECTION_CLASS = config_entries.CONN_CLASS_LOCAL_PUSH
 
     def __init__(self):
+        """Initialize the config flow."""
         self.data = {}
 
     async def async_step_dhcp(self, discovery_info: dhcp.DhcpServiceInfo) -> config_entries.ConfigFlowResult:
@@ -45,7 +48,8 @@ class XComfortBridgeConfigFlow(config_entries.ConfigFlow):
             if (configured_mac := entry.data.get(CONF_MAC)) is not None and format_mac(configured_mac) == mac:
                 if (old_ip := entry.data.get(CONF_IP_ADDRESS)) != ip:
                     _LOGGER.info(
-                        f"Bridge has changed IP-address. Configuring new IP and restarting. [mac={mac}, new_ip={ip}, old_ip={old_ip}]"
+                        "Bridge has changed IP-address. Configuring new IP and restarting. [mac=%s, new_ip=%s, old_ip=%s]",
+                        mac, ip, old_ip
                     )
                     self.hass.config_entries.async_update_entry(
                         entry, data=entry.data | {CONF_IP_ADDRESS: ip}, title=self.title
@@ -53,7 +57,7 @@ class XComfortBridgeConfigFlow(config_entries.ConfigFlow):
                     self.hass.async_create_task(self.hass.config_entries.async_reload(entry.entry_id))
                 return self.async_abort(reason="already_configured")
             if entry.data.get(CONF_MAC) is None and entry.data.get(CONF_IP_ADDRESS) == ip:
-                _LOGGER.info(f"Saved MAC-address for bridge [mac={mac}, ip={ip}]")
+                _LOGGER.info("Saved MAC-address for bridge [mac=%s, ip=%s]", mac, ip)
                 self.hass.config_entries.async_update_entry(entry, data=entry.data | {CONF_MAC: mac})
                 self.hass.async_create_task(self.hass.config_entries.async_reload(entry.entry_id))
                 return self.async_abort(reason="already_configured")
@@ -66,6 +70,7 @@ class XComfortBridgeConfigFlow(config_entries.ConfigFlow):
         return await self.async_step_auth()
 
     async def async_step_auth(self, user_input: dict[str, Any] | None = None) -> config_entries.ConfigFlowResult:
+        """Handle the authentication step of config flow."""
         if user_input is not None:
             self.data[CONF_AUTH_KEY] = user_input[CONF_AUTH_KEY]
             self.data[CONF_IDENTIFIER] = user_input.get(CONF_IDENTIFIER)
@@ -77,6 +82,7 @@ class XComfortBridgeConfigFlow(config_entries.ConfigFlow):
         return self.async_show_form(step_id="auth", data_schema=IDENTIFIER_AND_AUTH)
 
     async def async_step_user(self, user_input=None):
+        """Handle a onboarding flow initiated by the user."""
         if user_input is not None:
             self.data[CONF_IP_ADDRESS] = user_input[CONF_IP_ADDRESS]
             self.data[CONF_AUTH_KEY] = user_input[CONF_AUTH_KEY]
@@ -92,8 +98,10 @@ class XComfortBridgeConfigFlow(config_entries.ConfigFlow):
         return self.async_show_form(step_id="user", data_schema=FULL_CONFIG)
 
     async def async_step_import(self, import_data: dict):
+        """Handle import from configuration.yaml."""
         return await self.async_step_user(import_data)
 
     @property
     def title(self) -> str:
+        """Return the title of the config entry."""
         return self.data.get(CONF_IDENTIFIER, self.data.get(CONF_MAC, self.data.get(CONF_IP_ADDRESS, "Untitled")))
