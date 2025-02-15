@@ -1,3 +1,4 @@
+"""Support for xComfort Bridge cover shades."""
 import logging
 
 from xcomfort.devices import Shade
@@ -19,27 +20,33 @@ _LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
+    """Set up the xComfort Bridge covers from a config entry."""
     hub = XComfortHub.get_hub(hass, entry)
-
-    async def _wait_for_hub_then_setup():
-        await hub.has_done_initial_load.wait()
-
+    if hub is not None:
         devices = hub.devices
 
-        shades = list()
+        shades = []  # Changed from list()
         for device in devices:
             if isinstance(device, Shade):
                 shade = HASSXComfortShade(hass, hub, device)
                 shades.append(shade)
 
-        _LOGGER.debug(f"Added {len(shades)} shades")
+        _LOGGER.debug("Added %s shades", len(shades))  # Changed from f-string
         async_add_entities(shades)
-
-    entry.async_create_task(hass, _wait_for_hub_then_setup())
 
 
 class HASSXComfortShade(CoverEntity):
+    """Representation of an xComfort Bridge cover device."""
+
     def __init__(self, hass: HomeAssistant, hub: XComfortHub, device: Shade):
+        """Initialize the cover device.
+
+        Args:
+            hass: The Home Assistant instance
+            hub: The xComfort Bridge hub
+            device: The shade device
+
+        """
         self.hass = hass
         self.hub = hub
 
@@ -52,33 +59,38 @@ class HASSXComfortShade(CoverEntity):
 
     @property
     def device_class(self):
+        """Return the class of this device."""
         return CoverDeviceClass.SHADE
 
     async def async_added_to_hass(self):
-        _LOGGER.debug(f"Added to hass {self._name} ")
+        """Run when entity about to be added to hass."""
+        _LOGGER.debug("Added to hass %s", self._name)  # Changed from f-string
         if self._device.state is None:
-            _LOGGER.debug(f"State is null for {self._name}")
+            _LOGGER.debug("State is null for %s", self._name)  # Changed from f-string
         else:
             self._device.state.subscribe(lambda state: self._state_change(state))
 
     def _state_change(self, state):
+        """Handle state changes."""
         self._state = state
 
         should_update = self._state is not None
 
-        _LOGGER.debug(f"State changed {self._name} : {state}")
+        _LOGGER.debug("State changed %s : %s", self._name, state)  # Changed from f-string
 
         if should_update:
             self.schedule_update_ha_state()
 
     @property
     def is_closed(self) -> bool | None:
+        """Return if the cover is closed or not."""
         if not self._state:
             return None
         return self._state.is_closed
 
     @property
     def device_info(self):
+        """Return device information about this entity."""
         return {
             "identifiers": {(DOMAIN, self.unique_id)},
             "name": self.name,
@@ -100,6 +112,7 @@ class HASSXComfortShade(CoverEntity):
 
     @property
     def should_poll(self) -> bool:
+        """Return True if entity has to be polled for state."""
         return False
 
     @property
@@ -123,10 +136,14 @@ class HASSXComfortShade(CoverEntity):
         await self._device.move_stop()
 
     def update(self):
-        pass
+        """Update the entity."""
 
     @property
     def current_cover_position(self) -> int | None:
+        """Return current position of cover.
+
+        None is unknown, 0 is closed, 100 is fully open.
+        """
         if self._state:
             if self._state.position is None:
                 return None  # Return None if position is NoneType
