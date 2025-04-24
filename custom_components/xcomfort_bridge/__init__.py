@@ -7,6 +7,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_IP_ADDRESS, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.typing import ConfigType
+from homeassistant.helpers import device_registry
 
 from .const import CONF_AUTH_KEY, CONF_IDENTIFIER, DOMAIN
 from .hub import XComfortHub
@@ -37,8 +38,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     ip = str(config.get(CONF_IP_ADDRESS))
     auth_key = str(config.get(CONF_AUTH_KEY))
 
-    hub = XComfortHub(hass, identifier=identifier, ip=ip, auth_key=auth_key)
+    hub = XComfortHub(hass, identifier=identifier, ip=ip, auth_key=auth_key, entry=entry)
     hass.data[DOMAIN][entry.entry_id] = hub
+
+    device_registry.async_get(hass).async_get_or_create(
+         config_entry_id=entry.entry_id,
+         #connections={(dr.CONNECTION_NETWORK_MAC, api.config.mac_address)},
+         identifiers={(DOMAIN, hub.hub_id)},
+         manufacturer="Eaton",
+         name=entry.title,
+         #model=api.config.model_id,
+         #sw_version=api.config.software_version,
+     )
 
     entry.async_create_background_task(hass, hub.bridge.run(), f"XComfort/{identifier}")
     entry.async_create_task(hass, hub.load_devices())

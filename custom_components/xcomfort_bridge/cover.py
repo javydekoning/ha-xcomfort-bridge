@@ -97,7 +97,7 @@ class HASSXComfortShade(CoverEntity):
             "manufacturer": "Eaton",
             "model": "XXX",
             "sw_version": "Unknown",
-            "via_device": self.hub.hub_id,
+            "via_device": (DOMAIN, self.hub.hub_id),
         }
 
     @property

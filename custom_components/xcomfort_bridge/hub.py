@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import json
 
 from xcomfort.bridge import Bridge
 
@@ -21,7 +22,7 @@ _LOGGER = logging.getLogger(__name__)
 class XComfortHub:
     """Hub wrapper for xComfort bridge communication."""
 
-    def __init__(self, hass: HomeAssistant, identifier: str, ip: str, auth_key: str):
+    def __init__(self, hass: HomeAssistant, identifier: str, ip: str, auth_key: str, entry: ConfigEntry):
         """Initialize underlying bridge."""
         bridge = Bridge(ip, auth_key)
         self.hass = hass
@@ -29,8 +30,9 @@ class XComfortHub:
         self.identifier = identifier
         if self.identifier is None:
             self.identifier = ip
-        self._id = ip
-        self.devices = []  # Changed from list()
+        self.entry = entry
+        self._id = entry.unique_id
+        self.devices = []
         self._loop = asyncio.get_event_loop()
 
         self.has_done_initial_load = asyncio.Event()
@@ -53,7 +55,6 @@ class XComfortHub:
         self.devices = devs.values()
 
         _LOGGER.info("loaded %s devices", len(self.devices))
-
         rooms = await self.bridge.get_rooms()
         self.rooms = rooms.values()
 

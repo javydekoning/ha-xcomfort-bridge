@@ -179,7 +179,7 @@ class HASSXComfortRcTouch(ClimateEntity):
             "name": self._name,
             "manufacturer": "Eaton",
             "model": "RC Touch",
-            "via_device": self.hub.hub_id,
+            "via_device": (DOMAIN, self.hub.hub_id),
         }
 
     @property
