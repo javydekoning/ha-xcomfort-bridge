@@ -48,7 +48,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
                     sensors.append(XComfortPowerSensor(hub, room))
 
                 if room.state.value.temperature is not None:
-                     _LOGGER.debug("Adding temperature sensor for room %s", room.name)
+                    _LOGGER.debug("Adding temperature sensor for room %s", room.name)
                     sensors.append(XComfortEnergySensor(hub, room))
 
         for device in devices:
