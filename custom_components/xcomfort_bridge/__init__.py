@@ -6,7 +6,7 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_IP_ADDRESS, Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import device_registry
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.typing import ConfigType
 
 from .const import CONF_AUTH_KEY, CONF_IDENTIFIER, DOMAIN
@@ -41,7 +41,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hub = XComfortHub(hass, identifier=identifier, ip=ip, auth_key=auth_key, entry=entry)
     hass.data[DOMAIN][entry.entry_id] = hub
 
-    device_registry.async_get(hass).async_get_or_create(
+    dr.async_get(hass).async_get_or_create(
          config_entry_id=entry.entry_id,
          #connections={(dr.CONNECTION_NETWORK_MAC, api.config.mac_address)},
          identifiers={(DOMAIN, hub.hub_id)},
