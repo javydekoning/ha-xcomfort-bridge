@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import json
 
 from xcomfort.bridge import Bridge
 
