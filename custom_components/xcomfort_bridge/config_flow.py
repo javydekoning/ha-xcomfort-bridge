@@ -6,7 +6,7 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant import config_entries
-from homeassistant.components import dhcp
+from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 from homeassistant.const import CONF_IP_ADDRESS
 from homeassistant.helpers.device_registry import format_mac
 
@@ -38,7 +38,7 @@ class XComfortBridgeConfigFlow(config_entries.ConfigFlow):
         """Initialize the config flow."""
         self.data = {}
 
-    async def async_step_dhcp(self, discovery_info: dhcp.DhcpServiceInfo) -> config_entries.ConfigFlowResult:
+    async def async_step_dhcp(self, discovery_info: DhcpServiceInfo) -> config_entries.ConfigFlowResult:
         """Handle dhcp discovery."""
         ip = discovery_info.ip
         mac = format_mac(discovery_info.macaddress)
