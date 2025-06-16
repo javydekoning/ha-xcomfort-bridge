@@ -22,17 +22,25 @@ _LOGGER = logging.getLogger(__name__)
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     """Set up the xComfort Bridge covers from a config entry."""
     hub = XComfortHub.get_hub(hass, entry)
-    if hub is not None:
+
+    async def _wait_for_hub_then_setup():
+        await hub.has_done_initial_load.wait()
+
         devices = hub.devices
 
-        shades = []  # Changed from list()
+        _LOGGER.debug("Found %s xcomfort devices", len(devices))
+
+        shades = []
         for device in devices:
             if isinstance(device, Shade):
+                _LOGGER.debug("Adding %s", device)
                 shade = HASSXComfortShade(hass, hub, device)
                 shades.append(shade)
 
-        _LOGGER.debug("Added %s shades", len(shades))  # Changed from f-string
+        _LOGGER.debug("Added %s shades", len(shades))
         async_add_entities(shades)
+
+    entry.async_create_task(hass, _wait_for_hub_then_setup())
 
 
 class HASSXComfortShade(CoverEntity):
