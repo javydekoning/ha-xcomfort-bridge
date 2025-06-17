@@ -1,7 +1,7 @@
 {
   "domain": "xcomfort_bridge",
   "name": "Eaton xComfort Bridge",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "config_flow": true,
   "integration_type": "hub",
   "documentation": "https://github.com/javydekoning/ha-xcomfort-bridge",
@@ -9,7 +9,7 @@
   "requirements": [
     "git+https://github.com/alexbrasetvik/xcomfort-python.git@develop#xcomfort==0.2.0a1",
     "rx==3.2.0",
-    "pycryptodome==3.22.0"
+    "pycryptodome==3.23.0"
   ],
   "ssdp": [],
   "zeroconf": [],
