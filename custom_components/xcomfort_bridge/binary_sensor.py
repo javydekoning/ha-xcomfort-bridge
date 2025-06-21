@@ -1,7 +1,7 @@
 """Binary sensor platform for xComfort integration with Home Assistant."""
 import logging
 
-from xcomfort.devices import DoorSensor, DoorWindowSensor, WindowSensor
+from xcomfort.devices import DoorSensor, DoorWindowSensor, WindowSensor, Rocker
 
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
@@ -11,6 +11,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .const import DOMAIN
 from .hub import XComfortHub
 
 _LOGGER = logging.getLogger(__name__)
@@ -42,7 +43,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
             for device in devices
             if isinstance(device, DoorWindowSensor)
         )
+        sensors.extend(
+            XComfortRockerSensor(hass, hub, device)
+            for device in devices
+            if isinstance(device, Rocker)
+        )
 
+        _LOGGER.debug("Added %s binary sensors", len(sensors))
         async_add_entities(sensors)
 
     entry.async_create_task(hass, _wait_for_hub_then_setup())
@@ -100,3 +107,63 @@ class XComfortDoorWindowSensor(BinarySensorEntity):
 
         """
         return self._device and self._device.is_open
+
+class XComfortRockerSensor(BinarySensorEntity):
+    """Entity class for xComfort rockers."""
+
+    def __init__(self, hass: HomeAssistant, hub: XComfortHub, device: Rocker) -> None:
+        """Initialize the rock entity.
+
+        Args:
+            hass: HomeAssistant instance
+            hub: XComfortHub instance
+            device: Rocker device instance
+
+        """
+        super().__init__()
+        self._attr_name = device.name
+
+        self.hass = hass
+        self.hub = hub
+
+        self._device = device
+        self._name = device.name
+        self._state = None
+        self.device_id = device.device_id
+
+        self._unique_id = f"rocker_{DOMAIN}_{device.device_id}"
+
+    async def async_added_to_hass(self):
+        """Run when entity about to be added to hass."""
+        self._device.state.subscribe(self._state_change)
+
+    def _state_change(self, state) -> None:
+        """Handle state changes from the device."""
+        self._state = state
+        should_update = self._state is not None
+
+        if should_update:
+            self.schedule_update_ha_state()
+            # Emit event to enable stateless automation, since
+            # actual switch state may be same as before
+            self.hass.bus.fire(self._unique_id, {"on": state})
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return True if entity is on."""
+        return self._state
+
+    @property
+    def name(self) -> str:
+        """Return the display name of this switch."""
+        return self._device.name_with_controlled
+
+    @property
+    def unique_id(self) -> str:
+        """Return the unique ID."""
+        return self._unique_id
+
+    @property
+    def should_poll(self) -> bool:
+        """Return if the entity should be polled for state updates."""
+        return False
