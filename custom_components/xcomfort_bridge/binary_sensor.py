@@ -1,7 +1,7 @@
 """Binary sensor platform for xComfort integration with Home Assistant."""
 import logging
 
-from xcomfort.devices import DoorSensor, DoorWindowSensor, WindowSensor, Rocker
+from xcomfort.devices import DoorSensor, DoorWindowSensor, Rocker, WindowSensor
 
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
