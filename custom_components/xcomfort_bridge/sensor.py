@@ -21,6 +21,8 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PERCENTAGE, UnitOfEnergy, UnitOfPower
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.device_registry import DeviceInfo
+from custom_components.xcomfort_bridge.const import DOMAIN
 
 from .hub import XComfortHub
 
@@ -87,6 +89,12 @@ class XComfortPowerSensor(SensorEntity):
         self._state = None
         self._room.state.subscribe(lambda state: self._state_change(state))
 
+        unique_id = f"climate_{DOMAIN}_{hub.identifier}-{room.room_id}"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, unique_id)},
+            name=self._room.name,
+        )
+
     def _state_change(self, state):
         """Handle state changes from the device."""
         should_update = self._state is not None
@@ -129,6 +137,12 @@ class XComfortEnergySensor(RestoreSensor):
         self._room.state.subscribe(lambda state: self._state_change(state))
         self._updateTime = time.monotonic()
         self._consumption = 0
+
+        device_id = f"climate_{DOMAIN}_{hub.identifier}-{room.room_id}"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, device_id)},
+            name=self._room.name,
+        )
 
     async def async_added_to_hass(self) -> None:
         """Call when entity about to be added to hass."""
