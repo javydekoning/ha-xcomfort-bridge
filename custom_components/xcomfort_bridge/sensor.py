@@ -84,8 +84,9 @@ class XComfortPowerSensor(SensorEntity):
         )
         self.hub = hub
         self._room = room
-        self._attr_name = self._room.name
+        self._attr_name = f"{self._room.name} Power"
         self._attr_unique_id = f"energy_{self._room.room_id}"
+        self._unique_id = f"energy_{self._room.room_id}"
         self._state = None
         self._room.state.subscribe(lambda state: self._state_change(state))
 
@@ -131,8 +132,9 @@ class XComfortEnergySensor(RestoreSensor):
         )
         self.hub = hub
         self._room = room
-        self._attr_name = self._room.name
+        self._attr_name = f"{self._room.name} Energy"
         self._attr_unique_id = f"energy_kwh_{self._room.room_id}"
+        self._unique_id = f"energy_kwh_{self._room.room_id}"
         self._state = None
         self._room.state.subscribe(lambda state: self._state_change(state))
         self._updateTime = time.monotonic()
