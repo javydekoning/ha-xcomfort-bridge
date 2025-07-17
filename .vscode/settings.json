@@ -1,12 +1,11 @@
 {
-    "python.pythonPath": "venv/bin/python",
-    "files.associations": {
-      "*.yaml": "home-assistant"
-    },
-    "ruff.enable": true,
-    "ruff.fixAll": true,
-    "ruff.lint.enable": true,
-    "ruff.format.args": [
-        "--line-length=120"
-    ]
-  }
+  "files.associations": {
+    "*.yaml": "home-assistant"
+  },
+  "ruff.enable": true,
+  "ruff.fixAll": true,
+  "ruff.lint.enable": true,
+  "ruff.format.args": [
+    "--line-length=120"
+  ]
+}

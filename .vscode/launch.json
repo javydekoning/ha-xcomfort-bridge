@@ -4,15 +4,18 @@
   "configurations": [
     {
       "name": "Python: Launch HomeAssistant",
-      "type": "python",
+      "type": "debugpy",
       "request": "launch",
-      "program": "/usr/local/python/bin/hass",
+      "preLaunchTask": "Make config folder",
+      "program": "~/.local/bin/hass",
+      "env": {
+        "PYTHONPATH": "${env:PYTHONPATH}:${workspaceFolder}/custom_components"
+      },
       "args": [
-        "-c",
-        "${workspaceFolder}",
+        "--config",
+        "${workspaceFolder}/config",
         "--debug"
-      ],
-      "justMyCode": true
+      ]
     }
   ]
 }
