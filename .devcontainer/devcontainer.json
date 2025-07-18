@@ -1,7 +1,8 @@
 {
   "name": "HA Xcomfort bridge integration development",
-  "image": "mcr.microsoft.com/devcontainers/python:3.13",
-  "postCreateCommand": "python3 -m pip install --requirement requirements.txt",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
   "forwardPorts": [
     8123
   ],
