@@ -1,9 +1,0 @@
-{
-  "files.associations": {
-    "*.yaml": "home-assistant"
-  },
-  "ruff.enable": true,
-  "ruff.fixAll": true,
-  "ruff.lint.enable": true,
-  "ruff.lineLength": 120
-}
