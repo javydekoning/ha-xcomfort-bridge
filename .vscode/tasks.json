@@ -2,28 +2,22 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Run Home Assistant on port 9123",
+      "label": "Make config folder",
       "type": "shell",
-      "command": "container start",
+      "command": "mkdir -p ${workspaceFolder}/config",
       "problemMatcher": []
     },
     {
-      "label": "Run Home Assistant configuration against /config",
+      "label": "Run Home Assistant",
+      "dependsOn": "Make config folder",
       "type": "shell",
-      "command": "container check",
-      "problemMatcher": []
-    },
-    {
-      "label": "Upgrade Home Assistant to latest dev",
-      "type": "shell",
-      "command": "container install",
-      "problemMatcher": []
-    },
-    {
-      "label": "Install a specific version of Home Assistant",
-      "type": "shell",
-      "command": "container set-version",
-      "problemMatcher": []
+      "command": "~/.local/bin/hass --config ${workspaceFolder}/config --debug",
+      "problemMatcher": [],
+      "options": {
+        "env": {
+          "PYTHONPATH": "${env:PYTHONPATH}:${workspaceFolder}/custom_components"
+        }
+      }
     }
   ]
 }
