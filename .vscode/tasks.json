@@ -18,6 +18,11 @@
           "PYTHONPATH": "${env:PYTHONPATH}:${workspaceFolder}/custom_components"
         }
       }
+    },
+    {
+      "label": "Run Ruff Linter",
+      "type": "shell",
+      "command": "uv tool install ruff@latest && ruff check --config .github/linters/.ruff.toml --fix"
     }
   ]
 }

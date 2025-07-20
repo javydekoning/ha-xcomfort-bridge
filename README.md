@@ -16,4 +16,4 @@ From HACS
 
 ## Credits
 
-This repo is a (detached) fork of [jankrib/ha-xcomfort-bridge](https://github.com/jankrib/ha-xcomfort-bridge). 
+This repo is a (detached) fork of [jankrib/ha-xcomfort-bridge](https://github.com/jankrib/ha-xcomfort-bridge).

@@ -11,11 +11,7 @@
       "env": {
         "PYTHONPATH": "${env:PYTHONPATH}:${workspaceFolder}/custom_components"
       },
-      "args": [
-        "--config",
-        "${workspaceFolder}/config",
-        "--debug"
-      ]
+      "args": ["--config", "${workspaceFolder}/config", "--debug"]
     }
   ]
 }

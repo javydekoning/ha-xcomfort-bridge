@@ -6,7 +6,7 @@ name: RuffLinter
 on:
   push:
   pull_request:
-    branches: [main,develop,megalinter]
+    branches: [main, develop, megalinter]
 
 jobs:
   build:

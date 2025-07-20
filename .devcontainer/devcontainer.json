@@ -3,9 +3,7 @@
   "build": {
     "dockerfile": "Dockerfile"
   },
-  "forwardPorts": [
-    8123
-  ],
+  "forwardPorts": [8123],
   "portsAttributes": {
     "8123": {
       "label": "Home Assistant",
@@ -47,11 +45,7 @@
   "remoteUser": "vscode",
   "features": {
     "ghcr.io/devcontainers-extra/features/apt-packages:1": {
-      "packages": [
-        "ffmpeg",
-        "libturbojpeg0",
-        "libpcap-dev"
-      ]
+      "packages": ["ffmpeg", "libturbojpeg0", "libpcap-dev"]
     }
   }
 }

@@ -15,12 +15,7 @@
   "zeroconf": [],
   "homekit": {},
   "dependencies": [],
-  "codeowners": [
-    "@alexbrasetvik",
-    "@eliasdjup",
-    "@jankrib",
-    "@javydekoning"
-  ],
+  "codeowners": ["@alexbrasetvik", "@eliasdjup", "@jankrib", "@javydekoning"],
   "dhcp": [
     {
       "registered_devices": true
