@@ -103,7 +103,7 @@ class HASSXComfortShade(CoverEntity):
             "identifiers": {(DOMAIN, self.unique_id)},
             "name": self.name,
             "manufacturer": "Eaton",
-            "model": "XXX",
+            "model": "Shade",
             "sw_version": "Unknown",
             "via_device": (DOMAIN, self.hub.hub_id),
         }

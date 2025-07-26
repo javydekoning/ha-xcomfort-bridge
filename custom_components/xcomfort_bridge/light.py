@@ -89,7 +89,7 @@ class HASSXComfortLight(LightEntity):
             "identifiers": {(DOMAIN, self.unique_id)},
             "name": self.name,
             "manufacturer": "Eaton",
-            "model": "XXX",
+            "model": "Light",
             "sw_version": "Unknown",
             "via_device": (DOMAIN, self.hub.hub_id),
         }
