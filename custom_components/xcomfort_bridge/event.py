@@ -2,11 +2,12 @@
 
 import logging
 
-from xcomfort.devices import Rocker
+from xcomfort.devices import Light, Rocker, Shade
 
 from homeassistant.components.event import EventDeviceClass, EventEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .const import DOMAIN
@@ -54,6 +55,26 @@ class XComfortEvent(EventEntity):
         self._attr_name = device.name
         self._attr_unique_id = f"event_{DOMAIN}_{device.device_id}"
         self._device = device
+
+        control_ids = device.payload.get("controlId", [])
+        if len(control_ids) == 1:
+            # exhactly one controlled device, will add it to the same HASS-device
+
+            # ignore private-member-access because library miss a non-async way to get devices
+            # ruff: noqa: SLF001
+            controlled_device = device.bridge._devices.get(control_ids[0])
+            if controlled_device is not None:
+                controlled_device_id = None
+                if isinstance(controlled_device, Light):
+                    controlled_device_id = f"light_{DOMAIN}_{hub.identifier}-{controlled_device.device_id}"
+
+                if isinstance(controlled_device, Shade):
+                    controlled_device_id = f"shade_{DOMAIN}_{hub.identifier}-{controlled_device.device_id}"
+
+                if controlled_device_id is not None:
+                    self._attr_device_info = DeviceInfo(
+                        identifiers={(DOMAIN, controlled_device_id)},
+                    )
 
     async def async_added_to_hass(self) -> None:
         """Run when entity about to be added to hass."""
