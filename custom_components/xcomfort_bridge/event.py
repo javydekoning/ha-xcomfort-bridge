@@ -2,8 +2,8 @@
 
 import logging
 
-from xcomfort.devices import Light, Rocker, Shade
 from xcomfort.comp import Comp
+from xcomfort.devices import Light, Rocker, Shade
 
 from homeassistant.components.event import EventDeviceClass, EventEntity
 from homeassistant.config_entries import ConfigEntry
