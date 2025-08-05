@@ -2,6 +2,7 @@
 
 import logging
 
+from xcomfort.comp import Comp
 from xcomfort.devices import Light, Rocker, Shade
 
 from homeassistant.components.event import EventDeviceClass, EventEntity
@@ -28,8 +29,9 @@ async def async_setup_entry(
         events = []
         for device in hub.devices:
             if isinstance(device, Rocker):
-                _LOGGER.debug("Adding %s", device)
-                event = XComfortEvent(hass, hub, device)
+                comp = device.bridge._comps.get(device.payload.get("compId", ""))
+                _LOGGER.debug("Adding %s %s", device, comp)
+                event = XComfortEvent(hass, hub, device, comp)
                 events.append(event)
 
         async_add_entities(events)
@@ -40,19 +42,20 @@ async def async_setup_entry(
 class XComfortEvent(EventEntity):
     """Entity class for xComfort event button."""
 
-    def __init__(self, hass: HomeAssistant, hub: XComfortHub, device: Rocker) -> None:
+    def __init__(self, hass: HomeAssistant, hub: XComfortHub, device: Rocker, comp: Comp) -> None:
         """Initialize the Event entity.
 
         Args:
             hass: HomeAssistant instance
             hub: XComfortHub instance
             device: Rocker device instance
+            comp: XComfort Comp instance
 
         """
         self._attr_device_class = EventDeviceClass.BUTTON
         self._attr_event_types = ["on", "off"]
         self._attr_has_entity_name = True
-        self._attr_name = device.name
+        self._attr_name = f"{comp.name} {device.name}"
         self._attr_unique_id = f"event_{DOMAIN}_{device.device_id}"
         self._device = device
 
