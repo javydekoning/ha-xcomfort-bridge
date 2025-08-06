@@ -4,6 +4,7 @@
   "version": "0.4.0",
   "config_flow": true,
   "integration_type": "hub",
+  "iot_class": "local_push",
   "documentation": "https://github.com/javydekoning/ha-xcomfort-bridge",
   "issue_tracker": "https://github.com/javydekoning/ha-xcomfort-bridge/issues",
   "requirements": [
