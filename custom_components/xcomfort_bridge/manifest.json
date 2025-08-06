@@ -1,22 +1,14 @@
 {
   "domain": "xcomfort_bridge",
   "name": "Eaton xComfort Bridge",
-  "version": "0.4.0",
-  "config_flow": true,
-  "integration_type": "hub",
-  "iot_class": "local_push",
-  "documentation": "https://github.com/javydekoning/ha-xcomfort-bridge",
-  "issue_tracker": "https://github.com/javydekoning/ha-xcomfort-bridge/issues",
-  "requirements": [
-    "git+https://github.com/alexbrasetvik/xcomfort-python.git@develop#xcomfort==0.2.0a1",
-    "rx==3.2.0",
-    "pycryptodome==3.23.0"
+  "codeowners": [
+    "@alexbrasetvik",
+    "@eliasdjup",
+    "@jankrib",
+    "@javydekoning"
   ],
-  "ssdp": [],
-  "zeroconf": [],
-  "homekit": {},
+  "config_flow": true,
   "dependencies": [],
-  "codeowners": ["@alexbrasetvik", "@eliasdjup", "@jankrib", "@javydekoning"],
   "dhcp": [
     {
       "registered_devices": true
@@ -24,5 +16,18 @@
     {
       "macaddress": "003055*"
     }
-  ]
+  ],
+  "documentation": "https://github.com/javydekoning/ha-xcomfort-bridge",
+  "homekit": {},
+  "integration_type": "hub",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/javydekoning/ha-xcomfort-bridge/issues",
+  "requirements": [
+    "git+https://github.com/alexbrasetvik/xcomfort-python.git@develop#xcomfort==0.2.0a1",
+    "rx==3.2.0",
+    "pycryptodome==3.23.0"
+  ],
+  "ssdp": [],
+  "version": "0.4.0",
+  "zeroconf": []
 }
