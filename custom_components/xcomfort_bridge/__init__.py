@@ -41,17 +41,52 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hub = XComfortHub(hass, identifier=identifier, ip=ip, auth_key=auth_key, entry=entry)
     hass.data[DOMAIN][entry.entry_id] = hub
 
-    dr.async_get(hass).async_get_or_create(
-         config_entry_id=entry.entry_id,
-         #connections={(dr.CONNECTION_NETWORK_MAC, api.config.mac_address)},
-         identifiers={(DOMAIN, hub.hub_id)},
-         manufacturer="Eaton",
-         name=entry.title,
-         #model=api.config.model_id,
-         #sw_version=api.config.software_version,
-     )
-
+    # Start the bridge connection
     entry.async_create_background_task(hass, hub.bridge.run(), f"XComfort/{identifier}")
+
+    # Wait for bridge to initialize and get firmware info
+    await hub.bridge.wait_for_initialization()
+
+    # Wait a bit for bridge info (firmware, name, type) to arrive in SET_HOME_DATA message
+    # This message arrives after wait_for_initialization completes
+    await asyncio.sleep(1)
+
+    # Log hub information for debugging
+    _LOGGER.info(
+        "Hub info - ID: %s, Name: %s, Model: %s, FW: %s",
+        hub.hub_id,
+        hub.bridge_name,
+        hub.bridge_model,
+        hub.firmware_version,
+    )
+    _LOGGER.info(
+        "Bridge raw attributes - fw_version: %s, bridge_name: %s, bridge_type: %s",
+        getattr(hub.bridge, "fw_version", "NOT SET"),
+        getattr(hub.bridge, "bridge_name", "NOT SET"),
+        getattr(hub.bridge, "bridge_type", "NOT SET"),
+    )
+
+    # Register the device with all hub information
+    device_registry = dr.async_get(hass)
+    device = device_registry.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, hub.hub_id)},
+        manufacturer="Eaton",
+        name=hub.bridge_name or entry.title,
+        model=hub.bridge_model,
+        sw_version=hub.firmware_version,
+        serial_number=hub.bridge.bridge_id,
+    )
+
+    # Update device info in case it already existed
+    device_registry.async_update_device(
+        device.id,
+        name=hub.bridge_name or entry.title,
+        model=hub.bridge_model,
+        sw_version=hub.firmware_version,
+        serial_number=hub.bridge.bridge_id,
+    )
+
     entry.async_create_task(hass, hub.load_devices())
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
