@@ -19,9 +19,10 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import PERCENTAGE, UnitOfEnergy, UnitOfPower
+from homeassistant.const import CONF_IP_ADDRESS, PERCENTAGE, UnitOfEnergy, UnitOfPower
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .hub import XComfortHub
@@ -32,6 +33,20 @@ _LOGGER = logging.getLogger(__name__)
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     """Set up xComfort sensor devices."""
     hub = XComfortHub.get_hub(hass, entry)
+
+    # Get IP address from config
+    ip = str(entry.data.get(CONF_IP_ADDRESS))
+
+    # Add hub diagnostic sensors immediately
+    hub_sensors = [
+        XComfortHubSensor(hub, entry, "hub_id", "Hub ID", "mdi:identifier"),
+        XComfortHubSensor(hub, entry, "firmware_version", "Firmware Version", "mdi:chip"),
+        XComfortHubSensor(hub, entry, "bridge_name", "Bridge Name", "mdi:bridge"),
+        XComfortHubSensor(hub, entry, "bridge_model", "Bridge Model", "mdi:devices"),
+        XComfortHubSensor(hub, entry, "ip_address", "IP Address", "mdi:ip-network", ip),
+        XComfortHubSensor(hub, entry, "home_scenes_count", "Scenes Count", "mdi:script-text-outline"),
+    ]
+    async_add_entities(hub_sensors)
 
     async def _wait_for_hub_then_setup():
         await hub.has_done_initial_load.wait()
@@ -62,6 +77,54 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         async_add_entities(sensors)
 
     entry.async_create_task(hass, _wait_for_hub_then_setup())
+
+
+class XComfortHubSensor(SensorEntity):
+    """Sensor entity for xComfort hub diagnostics."""
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        hub: XComfortHub,
+        entry: ConfigEntry,
+        attribute: str,
+        name: str,
+        icon: str,
+        value: str | None = None,
+    ):
+        """Initialize the hub sensor.
+
+        Args:
+            hub: XComfortHub instance
+            entry: ConfigEntry instance
+            attribute: Hub attribute to display (hub_id, firmware_version, bridge_name, bridge_model, ip_address, or home_scenes_count)
+            name: Display name for the sensor
+            icon: MDI icon for the sensor
+            value: Optional fixed value (for IP address)
+
+        """
+        self.hub = hub
+        self._attribute = attribute
+        self._fixed_value = value
+        self._attr_name = name
+        self._attr_icon = icon
+        self._attr_unique_id = f"{hub.hub_id}_{attribute}"
+
+        # Link to the hub device
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, hub.hub_id)},
+        )
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the current value of the sensor."""
+        # Return fixed value if provided (for IP address)
+        if self._fixed_value is not None:
+            return self._fixed_value
+        # Otherwise get from hub attribute
+        return getattr(self.hub, self._attribute, None)
 
 
 class XComfortPowerSensor(SensorEntity):
@@ -163,9 +226,7 @@ class XComfortEnergySensor(RestoreSensor):
         """Calculate energy consumption since last update."""
         now = time.monotonic()
         timediff = math.floor(now - self._updateTime)  # number of seconds since last update
-        self._consumption += (
-            power / 3600 / 1000 * timediff
-        )  # Calculate, in kWh, energy consumption since last update.
+        self._consumption += power / 3600 / 1000 * timediff  # Calculate, in kWh, energy consumption since last update.
         self._updateTime = now
 
     @property

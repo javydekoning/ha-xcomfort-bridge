@@ -66,6 +66,31 @@ class XComfortHub:
         """Return the hub identifier."""
         return self._id
 
+    @property
+    def firmware_version(self) -> str | None:
+        """Return the firmware version."""
+        return getattr(self.bridge, "fw_version", None)
+
+    @property
+    def bridge_model(self) -> str | None:
+        """Return the bridge model based on bridge type."""
+        bridge_type = getattr(self.bridge, "bridge_type", None)
+        if bridge_type == 1:
+            return "xComfort Bridge"
+        if bridge_type is not None:
+            return f"xComfort Bridge (Type {bridge_type})"
+        return None
+
+    @property
+    def bridge_name(self) -> str | None:
+        """Return the bridge name."""
+        return getattr(self.bridge, "bridge_name", None)
+
+    @property
+    def home_scenes_count(self) -> int:
+        """Return the number of home scenes."""
+        return getattr(self.bridge, "home_scenes_count", 0)
+
     async def test_connection(self) -> bool:
         """Test if connection to the bridge is working."""
         await asyncio.sleep(1)

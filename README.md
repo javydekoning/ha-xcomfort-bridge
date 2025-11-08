@@ -17,3 +17,19 @@ From HACS
 ## Credits
 
 This repo is a (detached) fork of [jankrib/ha-xcomfort-bridge](https://github.com/jankrib/ha-xcomfort-bridge).
+
+## Contributing & development.
+
+1. Create a parent dir (e.g. `~/xcomfort`)
+2. Clone (your fork) of this repo.
+3. Clone `https://github.com/javydekoning/xcomfort-python`.
+4. Open your IDE in the `devcontainer`. Run task "Run home assistant"
+5. Optional, enable debug logging in `/workspaces/ha-xcomfort-bridge/config/configuration.yaml`:
+
+    ```yaml
+    logger:
+    default: warning
+    logs:
+        custom_components.xcomfort_bridge: debug
+        xcomfort: debug
+    ```
