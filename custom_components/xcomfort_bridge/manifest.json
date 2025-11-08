@@ -23,7 +23,7 @@
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/javydekoning/ha-xcomfort-bridge/issues",
   "requirements": [
-    "xcomfort @ git+https://github.com/javydekoning/xcomfort-python.git@develop",
+    "xcomfort@git+https://github.com/javydekoning/xcomfort-python.git@develop",
     "rx==3.2.0",
     "pycryptodome==3.23.0"
   ],
