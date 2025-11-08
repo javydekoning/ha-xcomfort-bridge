@@ -75,6 +75,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         name=hub.bridge_name or entry.title,
         model=hub.bridge_model,
         sw_version=hub.firmware_version,
+        serial_number=hub.bridge.bridge_id,
     )
 
     # Update device info in case it already existed
@@ -83,6 +84,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         name=hub.bridge_name or entry.title,
         model=hub.bridge_model,
         sw_version=hub.firmware_version,
+        serial_number=hub.bridge.bridge_id,
     )
 
     entry.async_create_task(hass, hub.load_devices())
