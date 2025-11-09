@@ -26,6 +26,7 @@ def _is_momentary_rocker(comp: Comp) -> bool:
     Returns:
         True if the rocker is a pushbutton type (1, 2 or 87).
         For now always returns True. Don't have full coverage of all types.
+
     """
     return True
 
