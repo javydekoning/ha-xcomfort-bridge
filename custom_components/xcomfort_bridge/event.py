@@ -53,13 +53,23 @@ class XComfortEvent(EventEntity):
 
         """
         self._attr_device_class = EventDeviceClass.BUTTON
-        self._attr_event_types = ["on", "off"]
+        # For multisensor rockers (momentary), use press_up/press_down
+        # For regular rockers (toggle), use on/off
+        if device.has_sensors:
+            self._attr_event_types = ["press_up", "press_down"]
+            self._is_momentary = True
+        else:
+            self._attr_event_types = ["on", "off"]
+            self._is_momentary = False
+        
         self._attr_has_entity_name = True
         self._attr_name = f"{comp.name} {device.name}"
         self._attr_unique_id = f"event_{DOMAIN}_{device.device_id}"
         self._device = device
 
         control_ids = device.payload.get("controlId", [])
+        device_info_set = False
+        
         if len(control_ids) == 1:
             # exhactly one controlled device, will add it to the same HASS-device
 
@@ -78,15 +88,41 @@ class XComfortEvent(EventEntity):
                     self._attr_device_info = DeviceInfo(
                         identifiers={(DOMAIN, controlled_device_id)},
                     )
+                    device_info_set = True
+        
+        # If device_info wasn't set and this is a multisensor rocker,
+        # create a dedicated device for it so sensors can be grouped
+        if not device_info_set and self._is_momentary:
+            self._attr_device_info = DeviceInfo(
+                identifiers={(DOMAIN, f"event_{DOMAIN}_{device.device_id}")},
+                name=comp.name,
+                manufacturer="Eaton",
+                model="Pushbutton Multisensor 1-fold",
+            )
 
     async def async_added_to_hass(self) -> None:
         """Run when entity about to be added to hass."""
         self._device.state.subscribe(self._async_handle_event)
 
     @callback
-    def _async_handle_event(self, state: bool) -> None:
+    def _async_handle_event(self, state) -> None:
         """Handle the button event."""
 
-        if state is not None:
+        if state is None:
+            return
+        
+        # For momentary rockers, extract the actual button state
+        if self._is_momentary:
+            # state is RockerSensorState or bool
+            if hasattr(state, 'is_on'):
+                button_state = state.is_on
+            else:
+                button_state = bool(state)
+            
+            # Emit press_up or press_down events
+            self._trigger_event("press_up" if button_state else "press_down")
+        else:
+            # For toggle rockers, use on/off events
             self._trigger_event("on" if state else "off")
-            self.async_write_ha_state()
+        
+        self.async_write_ha_state()
