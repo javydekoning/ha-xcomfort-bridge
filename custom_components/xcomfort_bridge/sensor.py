@@ -10,7 +10,6 @@ from typing import cast
 from xcomfort.bridge import Room
 from xcomfort.devices import RcTouch, Rocker
 
-from custom_components.xcomfort_bridge.const import DOMAIN
 from homeassistant.components.sensor import (
     RestoreSensor,
     SensorDeviceClass,
@@ -19,12 +18,19 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_IP_ADDRESS, PERCENTAGE, UnitOfEnergy, UnitOfPower, UnitOfTemperature
+from homeassistant.const import (
+    CONF_IP_ADDRESS,
+    PERCENTAGE,
+    UnitOfEnergy,
+    UnitOfPower,
+    UnitOfTemperature,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .const import DOMAIN
 from .hub import XComfortHub
 
 _LOGGER = logging.getLogger(__name__)
