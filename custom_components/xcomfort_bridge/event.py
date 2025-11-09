@@ -17,6 +17,19 @@ from .hub import XComfortHub
 _LOGGER = logging.getLogger(__name__)
 
 
+def _is_momentary_rocker(comp: Comp) -> bool:
+    """Check if a rocker component is a momentary pushbutton (neutral position).
+
+    Args:
+        comp: XComfort Comp instance
+
+    Returns:
+        True if the rocker is a pushbutton type (1, 2 or 87).
+        For now always returns True. Don't have full coverage of all types.
+    """
+    return True
+
+
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddConfigEntryEntitiesCallback
 ) -> None:
@@ -30,7 +43,15 @@ async def async_setup_entry(
         for device in hub.devices:
             if isinstance(device, Rocker):
                 comp = device.bridge._comps.get(device.payload.get("compId", ""))
-                _LOGGER.debug("Adding %s %s", device, comp)
+                is_momentary = device.has_sensors or _is_momentary_rocker(comp)
+                _LOGGER.debug(
+                    "Adding rocker %s (comp: %s, comp_type: %s, has_sensors: %s, is_momentary: %s)",
+                    device.name,
+                    comp.name if comp else "Unknown",
+                    comp.comp_type if comp else None,
+                    device.has_sensors,
+                    is_momentary,
+                )
                 event = XComfortEvent(hass, hub, device, comp)
                 events.append(event)
 
@@ -53,14 +74,14 @@ class XComfortEvent(EventEntity):
 
         """
         self._attr_device_class = EventDeviceClass.BUTTON
-        # For multisensor rockers (momentary), use press_up/press_down
-        # For regular rockers (toggle), use on/off
-        if device.has_sensors:
+        # Check if rocker is momentary (has neutral position)
+        # This includes multisensor rockers and regular rockers configured as momentary
+        self._is_momentary = device.has_sensors or _is_momentary_rocker(comp)
+
+        if self._is_momentary:
             self._attr_event_types = ["press_up", "press_down"]
-            self._is_momentary = True
         else:
             self._attr_event_types = ["on", "off"]
-            self._is_momentary = False
 
         self._attr_has_entity_name = True
         self._attr_name = f"{comp.name} {device.name}"
@@ -90,14 +111,24 @@ class XComfortEvent(EventEntity):
                     )
                     device_info_set = True
 
-        # If device_info wasn't set and this is a multisensor rocker,
-        # create a dedicated device for it so sensors can be grouped
+        # If device_info wasn't set and this is a momentary rocker,
+        # create a dedicated device for it so it shows up as its own device
         if not device_info_set and self._is_momentary:
+            # Determine appropriate model name based on component type
+            if comp.comp_type == 87:
+                model = "Pushbutton Multisensor 1-fold"
+            elif comp.comp_type == 1:
+                model = "Pushbutton 1-fold"
+            elif comp.comp_type == 2:
+                model = "Pushbutton 2-fold"
+            else:
+                model = "Pushbutton"
+
             self._attr_device_info = DeviceInfo(
                 identifiers={(DOMAIN, f"event_{DOMAIN}_{device.device_id}")},
                 name=comp.name,
                 manufacturer="Eaton",
-                model="Pushbutton Multisensor 1-fold",
+                model=model,
             )
 
     async def async_added_to_hass(self) -> None:
@@ -114,7 +145,7 @@ class XComfortEvent(EventEntity):
         # For momentary rockers, extract the actual button state
         if self._is_momentary:
             # state is RockerSensorState or bool
-            if hasattr(state, 'is_on'):
+            if hasattr(state, "is_on"):
                 button_state = state.is_on
             else:
                 button_state = bool(state)
