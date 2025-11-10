@@ -3,6 +3,7 @@
 import logging
 
 from xcomfort.comp import Comp
+from xcomfort.constants import ComponentTypes
 from xcomfort.devices import Light, Rocker, Shade
 
 from homeassistant.components.event import EventDeviceClass, EventEntity
@@ -16,6 +17,16 @@ from .hub import XComfortHub
 
 _LOGGER = logging.getLogger(__name__)
 
+# Mapping of component types to their model names
+COMPONENT_TYPE_TO_MODEL = {
+    ComponentTypes.PUSH_BUTTON_MULTI_SENSOR_1_CHANNEL: "1-Channel Pushbutton Multi Sensor",
+    ComponentTypes.PUSH_BUTTON_MULTI_SENSOR_2_CHANNEL: "2-Channel Pushbutton Multi Sensor",
+    ComponentTypes.PUSH_BUTTON_MULTI_SENSOR_4_CHANNEL: "4-Channel Pushbutton Multi Sensor",
+    ComponentTypes.PUSH_BUTTON_1_CHANNEL: "1-Channel Pushbutton",
+    ComponentTypes.PUSH_BUTTON_2_CHANNEL: "2-Channel Pushbutton",
+    ComponentTypes.PUSH_BUTTON_4_CHANNEL: "4-Channel Pushbutton",
+}
+
 
 def _is_momentary_rocker(comp: Comp) -> bool:
     """Check if a rocker component is a momentary pushbutton (neutral position).
@@ -24,7 +35,7 @@ def _is_momentary_rocker(comp: Comp) -> bool:
         comp: XComfort Comp instance
 
     Returns:
-        True if the rocker is a pushbutton type (1, 2 or 87).
+        True if the rocker is a pushbutton type.
         For now always returns True. Don't have full coverage of all types.
 
     """
@@ -116,14 +127,7 @@ class XComfortEvent(EventEntity):
         # create a dedicated device for it so it shows up as its own device
         if not device_info_set and self._is_momentary:
             # Determine appropriate model name based on component type
-            if comp.comp_type == 87:
-                model = "Pushbutton Multisensor 1-fold"
-            elif comp.comp_type == 1:
-                model = "Pushbutton 1-fold"
-            elif comp.comp_type == 2:
-                model = "Pushbutton 2-fold"
-            else:
-                model = "Pushbutton"
+            model = COMPONENT_TYPE_TO_MODEL.get(comp.comp_type, "Unknown")
 
             self._attr_device_info = DeviceInfo(
                 identifiers={(DOMAIN, f"event_{DOMAIN}_{device.device_id}")},
