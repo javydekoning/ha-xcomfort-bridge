@@ -1,9 +1,6 @@
 """Climate platform for xComfort integration with Home Assistant."""
 import logging
 
-from xcomfort.bridge import RctMode, RctState, Room
-from xcomfort.connection import Messages
-
 from homeassistant.components.climate import ClimateEntity
 from homeassistant.components.climate.const import (
     PRESET_COMFORT,
@@ -19,6 +16,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
 from .hub import XComfortHub
+from .xcomfort.bridge import RctMode, RctState, Room
+from .xcomfort.connection import Messages
 
 SUPPORT_FLAGS = ClimateEntityFeature.TARGET_TEMPERATURE | ClimateEntityFeature.PRESET_MODE
 

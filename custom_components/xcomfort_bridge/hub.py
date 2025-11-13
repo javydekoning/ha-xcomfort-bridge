@@ -5,12 +5,11 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from xcomfort.bridge import Bridge
-
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN
+from .xcomfort.bridge import Bridge
 
 _LOGGER = logging.getLogger(__name__)
 

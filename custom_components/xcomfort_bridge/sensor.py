@@ -7,9 +7,6 @@ import math
 import time
 from typing import cast
 
-from xcomfort.bridge import Room
-from xcomfort.devices import RcTouch, Rocker
-
 from homeassistant.components.sensor import (
     RestoreSensor,
     SensorDeviceClass,
@@ -32,6 +29,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
 from .hub import XComfortHub
+from .xcomfort.bridge import Room
+from .xcomfort.devices import RcTouch, Rocker
 
 _LOGGER = logging.getLogger(__name__)
 

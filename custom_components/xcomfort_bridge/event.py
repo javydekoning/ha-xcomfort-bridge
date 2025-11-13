@@ -2,10 +2,6 @@
 
 import logging
 
-from xcomfort.comp import Comp
-from xcomfort.constants import ComponentTypes
-from xcomfort.devices import Light, Rocker, Shade
-
 from homeassistant.components.event import EventDeviceClass, EventEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
@@ -14,6 +10,9 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .const import DOMAIN
 from .hub import XComfortHub
+from .xcomfort.comp import Comp
+from .xcomfort.constants import ComponentTypes
+from .xcomfort.devices import Light, Rocker, Shade
 
 _LOGGER = logging.getLogger(__name__)
 
