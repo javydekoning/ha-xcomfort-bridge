@@ -8,7 +8,7 @@ import aiohttp
 
 from .comp import Comp, CompState  # noqa: F401
 from .connection import SecureBridgeConnection, setup_secure_connection
-from .constants import FW_BUILDS, ComponentTypes, DeviceTypes, Messages
+from .constants import ComponentTypes, DeviceTypes, Messages
 from .devices import (
     BridgeDevice,
     DoorSensor,
@@ -343,12 +343,6 @@ class Bridge:
         self.bridge_name = payload.get("name")
         self.bridge_type = payload.get("bridgeType")
 
-        # Map firmware build number to version string
-        fw_build = payload.get("fwBuild")
-        if fw_build is not None:
-            self.fw_version = FW_BUILDS.get(fw_build, f"Unknown (build {fw_build})")
-            _LOGGER.info("Bridge firmware: %s (build %s)", self.fw_version, fw_build)
-
         # Extract home scenes count
         home_scenes = payload.get("homeScenes", [])
         self.home_scenes_count = len(home_scenes)
@@ -369,10 +363,14 @@ class Bridge:
     def _onMessage(self, message):
         """Handle incoming messages."""
         if "payload" in message:
-            message_type = Messages(message["type_int"])
-            method_name = "_handle_" + message_type.name
-
-            _LOGGER.debug("Received message type: %s", message_type.name)
+            try:
+                message_type = Messages(message["type_int"])
+                method_name = "_handle_" + message_type.name
+                _LOGGER.debug("Received message type: %s", message_type.name)
+            except ValueError:
+                # Unknown message type - log and skip
+                _LOGGER.warning("Unknown message type: %s (payload: %s)", message.get("type_int"), message.get("payload"))
+                return
 
             method = getattr(self, method_name, lambda p: self._handle_UNKNOWN(message_type, p))
             try:
@@ -387,7 +385,11 @@ class Bridge:
         _LOGGER.debug("Setting up secure connection to bridge")
         self.connection = await setup_secure_connection(self._session, self.ip_address, self.authkey)
         self.connection_subscription = self.connection.messages.subscribe(self._onMessage)
+
+        # Extract firmware version from connection
+        self.fw_version = self.connection.device_version
         _LOGGER.info("Secure connection established and message subscription active")
+        _LOGGER.info("Bridge firmware version: %s", self.fw_version)
 
     async def close(self):
         """Close the bridge connection."""

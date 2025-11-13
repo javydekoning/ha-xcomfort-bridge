@@ -109,8 +109,9 @@ async def setup_secure_connection(session, ip_address, authkey):
             _raise_connection_error(msg["info"])
 
         deviceId = msg["payload"]["device_id"]
+        deviceVersion = msg["payload"].get("device_version", "Unknown")
         connectionId = msg["payload"]["connection_id"]
-        _LOGGER.debug("Received device_id: %s, connection_id: %s", deviceId, connectionId)
+        _LOGGER.debug("Received device_id: %s, device_version: %s, connection_id: %s", deviceId, deviceVersion, connectionId)
 
         _LOGGER.debug("Sending connection confirmation")
         await __send(
@@ -153,7 +154,7 @@ async def setup_secure_connection(session, ip_address, authkey):
 
         await __send(ws, {"type_int": 16, "mc": -1, "payload": {"secret": secret}})
 
-        connection = SecureBridgeConnection(ws, key, iv, deviceId)
+        connection = SecureBridgeConnection(ws, key, iv, deviceId, deviceVersion)
         _LOGGER.debug("Created SecureBridgeConnection instance")
 
         # Start LOGIN
@@ -223,12 +224,13 @@ async def setup_secure_connection(session, ip_address, authkey):
 class SecureBridgeConnection:
     """Secure connection to xComfort bridge."""
 
-    def __init__(self, websocket, key, iv, device_id):
+    def __init__(self, websocket, key, iv, device_id, device_version):
         """Initialize secure connection."""
         self.websocket = websocket
         self.key = key
         self.iv = iv
         self.device_id = device_id
+        self.device_version = device_version
 
         self.state = ConnectionState.Initial
         self._messageSubject = rx.subject.Subject()

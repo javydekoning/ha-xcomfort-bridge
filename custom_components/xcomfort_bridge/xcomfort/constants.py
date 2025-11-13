@@ -168,9 +168,3 @@ class ComponentTypes(IntEnum):
     PUSH_BUTTON_MULTI_SENSOR_2_CHANNEL = 88
     PUSH_BUTTON_MULTI_SENSOR_4_CHANNEL = 89
 
-
-# Firmware build version mappings
-FW_BUILDS = {
-    66: "4.0.1",
-}
-
