@@ -196,6 +196,11 @@ class RcTouch(BridgeDevice):
         BridgeDevice.__init__(self, bridge, device_id, name)
 
         self.comp_id = comp_id
+        self.virtual_rocker_id = device_id + 1  # Virtual rocker always has device_id + 1
+
+        # Separate observable for button events from the virtual rocker
+        self.button_state = rx.subject.BehaviorSubject(None)
+        self.virtual_rocker_payload = {}
 
     def handle_state(self, payload):
         """Handle RcTouch state updates."""
@@ -213,6 +218,15 @@ class RcTouch(BridgeDevice):
             _LOGGER.debug("RcTouch %s state update: temp=%s°C, humidity=%s%%",
                          self.name, temperature, humidity)
             self.state.on_next(RcTouchState(temperature, humidity, payload))
+
+    def handle_virtual_rocker_state(self, payload):
+        """Handle button state updates from the virtual rocker."""
+        self.virtual_rocker_payload.update(payload)
+
+        if "curstate" in payload:
+            button_state = bool(payload["curstate"])
+            _LOGGER.debug("RcTouch %s button state update: %s", self.name, "PRESSED" if button_state else "RELEASED")
+            self.button_state.on_next(button_state)
 
 
 class Heater(BridgeDevice):

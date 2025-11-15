@@ -56,30 +56,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     async def _wait_for_hub_then_setup():
         await hub.has_done_initial_load.wait()
 
-        rooms = hub.rooms
         devices = hub.devices
 
-        _LOGGER.debug("Found %s xcomfort rooms", len(rooms))
-        _LOGGER.debug("Found %s xcomfort devices", len(devices))
+        _LOGGER.debug("Found %s xcomfort devices", len(list(devices)))
 
         sensors = []
-        for room in rooms:
-            if room.state.value is not None:
-                if room.state.value.power is not None:
-                    _LOGGER.debug("Adding power sensors for room %s", room.name)
-                    sensors.append(XComfortPowerSensor(hub, room))
 
-                if room.state.value.temperature is not None:
-                    _LOGGER.debug("Adding temperature sensor for room %s", room.name)
-                    sensors.append(XComfortEnergySensor(hub, room))
-
+        # Add device-based sensors only (no room-based sensors)
         for device in devices:
             if isinstance(device, RcTouch):
-                _LOGGER.debug("Adding temperature and humidity sensors for RcTouch device %s", device)
+                _LOGGER.debug("Adding temperature and humidity sensors for RcTouch device %s", device.name)
                 sensors.append(XComfortRcTouchTemperatureSensor(hub, device))
                 sensors.append(XComfortRcTouchHumiditySensor(hub, device))
             elif isinstance(device, Rocker) and device.has_sensors:
-                _LOGGER.debug("Adding temperature and humidity sensors for multisensor Rocker %s", device)
+                _LOGGER.debug("Adding temperature and humidity sensors for multisensor Rocker %s", device.name)
                 sensors.append(XComfortRockerTemperatureSensor(hub, device))
                 sensors.append(XComfortRockerHumiditySensor(hub, device))
 
@@ -274,6 +264,12 @@ class XComfortRcTouchTemperatureSensor(SensorEntity):
         self._state = None
         self._device.state.subscribe(lambda state: self._state_change(state))
 
+        # Link to the climate device
+        device_id = f"climate_{DOMAIN}_{hub.identifier}-{device.device_id}"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, device_id)},
+        )
+
     def _state_change(self, state):
         should_update = self._state is not None
 
@@ -312,6 +308,12 @@ class XComfortRcTouchHumiditySensor(SensorEntity):
         self.hub = hub
         self._state = None
         self._device.state.subscribe(lambda state: self._state_change(state))
+
+        # Link to the climate device
+        device_id = f"climate_{DOMAIN}_{hub.identifier}-{device.device_id}"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, device_id)},
+        )
 
     def _state_change(self, state):
         should_update = self._state is not None
@@ -372,7 +374,7 @@ class XComfortRockerTemperatureSensor(SensorEntity):
         if self._state is None:
             return None
         # Handle both RockerSensorState and legacy bool states
-        if hasattr(self._state, 'temperature'):
+        if hasattr(self._state, "temperature"):
             return self._state.temperature
         return None
 
@@ -423,6 +425,6 @@ class XComfortRockerHumiditySensor(SensorEntity):
         if self._state is None:
             return None
         # Handle both RockerSensorState and legacy bool states
-        if hasattr(self._state, 'humidity'):
+        if hasattr(self._state, "humidity"):
             return self._state.humidity
         return None

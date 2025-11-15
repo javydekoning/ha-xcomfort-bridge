@@ -18,6 +18,7 @@ from .const import DOMAIN
 from .hub import XComfortHub
 from .xcomfort.bridge import RctMode, RctState, Room
 from .xcomfort.connection import Messages
+from .xcomfort.devices import RcTouch
 
 SUPPORT_FLAGS = ClimateEntityFeature.TARGET_TEMPERATURE | ClimateEntityFeature.PRESET_MODE
 
@@ -39,16 +40,37 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     async def _wait_for_hub_then_setup():
         await hub.has_done_initial_load.wait()
 
+        devices = hub.devices
         rooms = hub.rooms
 
-        _LOGGER.debug("Found %d xcomfort rooms", len(rooms))
+        _LOGGER.debug("Found %d xcomfort devices", len(list(devices)))
+
+        # Filter for RcTouch devices (devType=450)
+        rc_touch_devices = [device for device in devices if isinstance(device, RcTouch)]
+        _LOGGER.debug("Found %d RcTouch devices", len(rc_touch_devices))
+
+        # Create a mapping of room_id to room for easy lookup
+        rooms_by_id = {room.room_id: room for room in rooms}
 
         rcts = []
-        for room in rooms:
-            if room.state.value is not None:
-                if room.state.value.setpoint is not None:
-                    rct = HASSXComfortRcTouch(hass, hub, room)
-                    rcts.append(rct)
+        for device in rc_touch_devices:
+            # Get the room associated with this RcTouch device from the payload
+            if device.state.value is not None and hasattr(device.state.value, 'raw'):
+                temp_room_id = device.state.value.raw.get('tempRoom')
+                if temp_room_id is not None:
+                    room = rooms_by_id.get(temp_room_id)
+                    if room is not None:
+                        _LOGGER.debug("Creating climate entity for RcTouch device '%s' with room '%s'",
+                                    device.name, room.name)
+                        rct = HASSXComfortRcTouch(hass, hub, room, device)
+                        rcts.append(rct)
+                    else:
+                        _LOGGER.warning("RcTouch device '%s' references room %d which was not found",
+                                      device.name, temp_room_id)
+                else:
+                    _LOGGER.debug("RcTouch device '%s' has no tempRoom in payload", device.name)
+            else:
+                _LOGGER.debug("RcTouch device '%s' has no state yet", device.name)
 
         _LOGGER.debug("Added %d rc touch units", len(rcts))
         async_add_entities(rcts)
@@ -63,42 +85,53 @@ class HASSXComfortRcTouch(ClimateEntity):
     _attr_hvac_modes = [HVACMode.AUTO]
     _attr_supported_features = SUPPORT_FLAGS
 
-    def __init__(self, hass: HomeAssistant, hub: XComfortHub, room: Room):
+    def __init__(self, hass: HomeAssistant, hub: XComfortHub, room: Room, device: RcTouch):
         """Initialize the climate device.
 
         Args:
             hass: Home Assistant instance
             hub: XComfort hub instance
             room: Room instance from xComfort
+            device: RcTouch device instance
 
         """
         self.hass = hass
         self.hub = hub
         self._room = room
-        self._name = room.name
+        self._device = device
+        self._name = device.name
         self._state = None
 
         self.rctpreset = RctMode.Comfort
         self.rctstate = RctState.Idle
         self.temperature = 20.0
+        self.humidity = 50.0
         self.currentsetpoint = 20.0
 
-        self._unique_id = f"climate_{DOMAIN}_{hub.identifier}-{room.room_id}"
+        self._unique_id = f"climate_{DOMAIN}_{hub.identifier}-{device.device_id}"
 
     async def async_added_to_hass(self):
         """Run when entity about to be added to hass."""
 
         _LOGGER.debug("Added to hass %s", self._name)
-        if self._room.state is None:
-            _LOGGER.debug("State is null for %s", self._name)
-        else:
-            self._room.state.subscribe(lambda state: self._state_change(state))
 
-    def _state_change(self, state):
-        """Handle state changes from the device.
+        # Subscribe to room state for heating control (setpoint, mode, power)
+        if self._room.state is None:
+            _LOGGER.debug("Room state is null for %s", self._name)
+        else:
+            self._room.state.subscribe(lambda state: self._room_state_change(state))
+
+        # Subscribe to device state for temperature and humidity
+        if self._device.state is None:
+            _LOGGER.debug("Device state is null for %s", self._name)
+        else:
+            self._device.state.subscribe(lambda state: self._device_state_change(state))
+
+    def _room_state_change(self, state):
+        """Handle room state changes for heating control.
 
         Args:
-            state: New state from the device
+            state: New state from the room
 
         """
         self._state = state
@@ -108,10 +141,25 @@ class HASSXComfortRcTouch(ClimateEntity):
                 self.rctpreset = RctMode(state.raw["currentMode"])
             if "mode" in state.raw:
                 self.rctpreset = RctMode(state.raw["mode"])
-            self.temperature = state.temperature
             self.currentsetpoint = state.setpoint
 
-            _LOGGER.debug("State changed %s : %s", self._name, state)
+            _LOGGER.debug("Room state changed %s : %s", self._name, state)
+
+            self.schedule_update_ha_state()
+
+    def _device_state_change(self, state):
+        """Handle device state changes for temperature and humidity.
+
+        Args:
+            state: New state from the RcTouch device
+
+        """
+        if state is not None:
+            self.temperature = state.temperature
+            self.humidity = state.humidity
+
+            _LOGGER.debug("Device state changed %s : temp=%s, humidity=%s",
+                         self._name, state.temperature, state.humidity)
 
             self.schedule_update_ha_state()
 
@@ -212,7 +260,7 @@ class HASSXComfortRcTouch(ClimateEntity):
     @property
     def current_humidity(self):
         """Return the current humidity."""
-        return int(self._state.humidity)
+        return int(self.humidity)
 
     @property
     def hvac_action(self):

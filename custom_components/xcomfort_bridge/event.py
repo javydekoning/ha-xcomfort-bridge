@@ -12,7 +12,7 @@ from .const import DOMAIN
 from .hub import XComfortHub
 from .xcomfort.comp import Comp
 from .xcomfort.constants import ComponentTypes
-from .xcomfort.devices import Light, Rocker, Shade
+from .xcomfort.devices import Light, RcTouch, Rocker, Shade
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -24,6 +24,7 @@ COMPONENT_TYPE_TO_MODEL = {
     ComponentTypes.PUSH_BUTTON_1_CHANNEL: "1-Channel Pushbutton",
     ComponentTypes.PUSH_BUTTON_2_CHANNEL: "2-Channel Pushbutton",
     ComponentTypes.PUSH_BUTTON_4_CHANNEL: "4-Channel Pushbutton",
+    ComponentTypes.RC_TOUCH: "RC Touch",
 }
 
 
@@ -64,6 +65,16 @@ async def async_setup_entry(
                     is_momentary,
                 )
                 event = XComfortEvent(hass, hub, device, comp)
+                events.append(event)
+            elif isinstance(device, RcTouch):
+                comp = device.bridge._comps.get(device.comp_id)
+                _LOGGER.debug(
+                    "Adding RcTouch button events for %s (comp: %s, comp_type: %s)",
+                    device.name,
+                    comp.name if comp else "Unknown",
+                    comp.comp_type if comp else None,
+                )
+                event = XComfortRcTouchEvent(hass, hub, device, comp)
                 events.append(event)
 
         async_add_entities(events)
@@ -160,4 +171,49 @@ class XComfortEvent(EventEntity):
             # For toggle rockers, use on/off events
             self._trigger_event("on" if state else "off")
 
+        self.async_write_ha_state()
+
+
+class XComfortRcTouchEvent(EventEntity):
+    """Entity class for xComfort RcTouch button events."""
+
+    def __init__(self, hass: HomeAssistant, hub: XComfortHub, device: RcTouch, comp: Comp) -> None:
+        """Initialize the RcTouch Event entity.
+
+        Args:
+            hass: HomeAssistant instance
+            hub: XComfortHub instance
+            device: RcTouch device instance
+            comp: XComfort Comp instance
+
+        """
+        self._attr_device_class = EventDeviceClass.BUTTON
+        # RcTouch buttons are momentary (press up/down)
+        self._attr_event_types = ["press_up", "press_down"]
+        self._attr_has_entity_name = True
+        self._attr_name = "Button"
+        self._attr_unique_id = f"event_{DOMAIN}_{device.device_id}"
+        self._device = device
+
+        # Link to the RcTouch climate device
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, f"climate_{DOMAIN}_{hub.identifier}-{device.device_id}")},
+        )
+
+    async def async_added_to_hass(self) -> None:
+        """Run when entity about to be added to hass."""
+        # Subscribe to button_state instead of regular state
+        self._device.button_state.subscribe(self._async_handle_event)
+
+    @callback
+    def _async_handle_event(self, state) -> None:
+        """Handle the button event."""
+        if state is None:
+            return
+
+        # state is bool (True = pressed/up, False = released/down)
+        button_state = bool(state)
+
+        # Emit press_up or press_down events
+        self._trigger_event("press_up" if button_state else "press_down")
         self.async_write_ha_state()

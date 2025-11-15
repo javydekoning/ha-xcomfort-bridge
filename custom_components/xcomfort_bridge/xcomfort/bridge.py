@@ -140,7 +140,27 @@ class Bridge:
     def _handle_SET_DEVICE_STATE(self, payload):
         """Handle device state updates."""
         try:
-            device = self._devices[payload["deviceId"]]
+            device_id = payload["deviceId"]
+            device = self._devices.get(device_id)
+
+            if device is None:
+                # Check if this is a virtual rocker for an RcTouch device
+                potential_rctouch_id = device_id - 1
+                potential_rctouch = self._devices.get(potential_rctouch_id)
+
+                if potential_rctouch is not None and isinstance(potential_rctouch, RcTouch):
+                    _LOGGER.debug(
+                        "Redirecting state update for virtual rocker %s to RcTouch %s",
+                        device_id,
+                        potential_rctouch.name,
+                    )
+                    # Forward button state updates to RcTouch
+                    potential_rctouch.handle_virtual_rocker_state(payload)
+                    return
+
+                _LOGGER.warning("Received state update for unknown device: %s", device_id)
+                return
+
             _LOGGER.debug("Updating device state for %s: %s", device.name, payload)
             device.handle_state(payload)
         except KeyError:
@@ -158,6 +178,20 @@ class Bridge:
                     _LOGGER.debug("State update for device %s: %s", device.name, item)
                     device.handle_state(item)
                 else:
+                    # Check if this is a virtual rocker for an RcTouch device
+                    potential_rctouch_id = deviceId - 1
+                    potential_rctouch = self._devices.get(potential_rctouch_id)
+
+                    if potential_rctouch is not None and isinstance(potential_rctouch, RcTouch):
+                        _LOGGER.debug(
+                            "Redirecting state update for virtual rocker %s to RcTouch %s",
+                            deviceId,
+                            potential_rctouch.name,
+                        )
+                        # Forward button state updates to RcTouch
+                        potential_rctouch.handle_virtual_rocker_state(item)
+                        continue
+
                     _LOGGER.warning("Received state update for unknown device %s: %s", deviceId, item)
 
             elif "roomId" in item:
@@ -216,7 +250,24 @@ class Bridge:
 
         elif dev_type == DeviceTypes.RC_TOUCH:
             _LOGGER.debug("Creating RcTouch device")
-            return RcTouch(self, device_id, name, comp_id)
+            rctouch = RcTouch(self, device_id, name, comp_id)
+
+            # Check if virtual rocker was already created (before RcTouch)
+            # If so, remove it from devices list since it should not be separate
+            virtual_rocker_id = device_id + 1
+            if virtual_rocker_id in self._devices:
+                virtual_rocker = self._devices[virtual_rocker_id]
+                if isinstance(virtual_rocker, Rocker):
+                    _LOGGER.info(
+                        "Found pre-existing virtual rocker %s (id: %s) for RcTouch %s (id: %s) - removing separate device",
+                        virtual_rocker.name,
+                        virtual_rocker_id,
+                        name,
+                        device_id,
+                    )
+                    del self._devices[virtual_rocker_id]
+
+            return rctouch
 
         elif dev_type == DeviceTypes.SWITCH:
             component: Comp | None = self._comps.get(comp_id)
@@ -228,6 +279,22 @@ class Bridge:
                 return WindowSensor(self, device_id, name, comp_id, payload)
 
         elif dev_type == DeviceTypes.ROCKER:
+            # Check if this is a virtual rocker for an RcTouch device
+            # RcTouch device ID is always rocker_id - 1
+            potential_rctouch_id = device_id - 1
+            potential_rctouch = self._devices.get(potential_rctouch_id)
+
+            if potential_rctouch is not None and isinstance(potential_rctouch, RcTouch):
+                _LOGGER.info(
+                    "Rocker device %s (id: %s) is a virtual rocker for RcTouch %s (id: %s) - skipping separate device creation",
+                    name,
+                    device_id,
+                    potential_rctouch.name,
+                    potential_rctouch_id,
+                )
+                # Don't create a separate device - this rocker belongs to the RcTouch
+                return None
+
             # What Xcomfort calls a rocker HomeAssistant (and most humans) call a
             # switch
             _LOGGER.debug("Creating Rocker device")
@@ -421,6 +488,10 @@ class Bridge:
     async def get_devices(self):
         """Get all devices."""
         await self.wait_for_initialization()
+
+        _LOGGER.debug("Getting all devices - total count: %d", len(self._devices))
+        for device_id, device in self._devices.items():
+            _LOGGER.debug("Device: id=%s, name=%s, type=%s", device_id, device.name, type(device).__name__)
 
         return self._devices
 
