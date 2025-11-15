@@ -2,6 +2,16 @@
 
 Eaton xComfort integration with Home Assistant. Note that you need the **xComfort Bridge** for this to work.
 
+## Device Compatibility
+
+✅ for "Yes, "❌ for "No" or ⚠️ for "Partial" functionality.
+
+| Device                         | Device Type | Tested | Functional |
+|--------------------------------|-------------|--------|------------|
+| Push Button 1-Fold             | CTAA-01/04  | ✅      | ✅        |
+| Push Button MultiSensor 1-Fold | CTSA-01/04  | ✅      | ✅        |
+| Room Control (Rc) Touch        | CRCA-00/08  | ✅      | ⚠️         |
+
 Developers, if you want to debug this, look at the [instructions found here](Debug.md)
 
 ## Installation

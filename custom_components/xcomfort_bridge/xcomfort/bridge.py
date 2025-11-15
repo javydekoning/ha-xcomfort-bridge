@@ -369,7 +369,9 @@ class Bridge:
                 _LOGGER.debug("Received message type: %s", message_type.name)
             except ValueError:
                 # Unknown message type - log and skip
-                _LOGGER.warning("Unknown message type: %s (payload: %s)", message.get("type_int"), message.get("payload"))
+                _LOGGER.warning(
+                    "Unknown message type: %s (payload: %s)", message.get("type_int"), message.get("payload")
+                )
                 return
 
             method = getattr(self, method_name, lambda p: self._handle_UNKNOWN(message_type, p))
