@@ -1,7 +1,7 @@
 ---
 name: 🐛 Bug
 about: Report an issue
-title: '[BUG]: '
+title: '[BUG]: UPDATE BUG TITLE'
 labels: "bug,needs-triage"
 assignees: ''
 
@@ -15,6 +15,18 @@ Use this form to submit a reproducible bug.
 
 **Logs:**
 
-```log
+Ensure you setup debug logging, before reporting issues! Instructions for your home assistant configuration:
 
+```yaml
+logger:
+  default: warning
+  logs:
+    custom_components.xcomfort_bridge: debug
+    xcomfort: debug 
+```
+
+Paste you logs below:
+
+```log
+<paste logs here>
 ```
