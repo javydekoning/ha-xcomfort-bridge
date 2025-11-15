@@ -1,4 +1,5 @@
 """Constants module for xComfort integration."""
+
 from enum import IntEnum
 
 
@@ -97,7 +98,8 @@ class Messages(IntEnum):
     SET_HEATING_PROGRAM_ID = 360
     HEATING_PROGRAM_DELETED = 362
     SET_ROOM_HEATING_STATE = 363
-    SET_BRIDGE_STATE = 364
+    SET_BRIDGE_STATE = 364  # {'heatingOn': 0, 'lightsOn': 0, 'loadsOn': 0, 'windowsOpen': 0, 'doorsOpen': 0, 'presence': 0, 'shadsClosed': 0, 'wgWaterOff': 0, 'coolingOn': 0, 'power': 141.0, 'tempOutside': -100.0}
+    PUBLISH_MAIN_ELECTRICAL_ENERGY_USAGE = 401  # {'meterId': 49, 'connectionState': 1, 'power': 141}
     IDLE = -1
     NACK_INFO_INVALID_ACTION = -98
     NACK_INFO_DEVICE_NOT_DIMMABLE = -99
@@ -167,4 +169,3 @@ class ComponentTypes(IntEnum):
     PUSH_BUTTON_MULTI_SENSOR_1_CHANNEL = 87
     PUSH_BUTTON_MULTI_SENSOR_2_CHANNEL = 88
     PUSH_BUTTON_MULTI_SENSOR_4_CHANNEL = 89
-
