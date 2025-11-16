@@ -24,6 +24,7 @@ COMPONENT_TYPE_TO_MODEL = {
     ComponentTypes.PUSH_BUTTON_1_CHANNEL: "1-Channel Pushbutton",
     ComponentTypes.PUSH_BUTTON_2_CHANNEL: "2-Channel Pushbutton",
     ComponentTypes.PUSH_BUTTON_4_CHANNEL: "4-Channel Pushbutton",
+    ComponentTypes.REMOTE_CONTROL_2_CHANNEL: "2-Channel Remote Control",
     ComponentTypes.RC_TOUCH: "RC Touch",
 }
 
@@ -33,6 +34,7 @@ MULTI_CHANNEL_COMPONENTS = {
     ComponentTypes.PUSH_BUTTON_4_CHANNEL: 4,
     ComponentTypes.PUSH_BUTTON_MULTI_SENSOR_2_CHANNEL: 2,
     ComponentTypes.PUSH_BUTTON_MULTI_SENSOR_4_CHANNEL: 4,
+    ComponentTypes.REMOTE_CONTROL_2_CHANNEL: 2,
 }
 
 

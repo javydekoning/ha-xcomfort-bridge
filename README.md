@@ -6,13 +6,16 @@ Eaton xComfort integration with Home Assistant. Note that you need the **xComfor
 
 ✅ for "Yes, "❌ for "No" or ⚠️ for "Partial" functionality.
 
-| Device                         | Device Type | Tested | Functional |
-|--------------------------------|-------------|--------|------------|
-| Push Button 1-Fold             | CTAA-01/04  | ✅      | ✅        |
-| Push Button 2-Fold             | CTAA-02/04  | ✅      | ✅        |
-| Push Button 4-Fold             | CTAA-04/04  | ✅      | ✅        |
-| Push Button MultiSensor 1-Fold | CTSA-01/04  | ✅      | ✅        |
-| Room Control (Rc) Touch        | CRCA-00/08  | ✅      | ⚠️         |
+| Device                          | Device Type | Tested | Functional |
+|---------------------------------|-------------|--------|------------|
+| Push Button 1-Fold              | CTAA-01/04  | ✅     | ✅        |
+| Push Button 2-Fold              | CTAA-02/04  | ✅     | ✅        |
+| Push Button 4-Fold              | CTAA-04/04  | ✅     | ✅        |
+| Push Button MultiSensor 1-Fold  | CTSA-01/04  | ✅     | ✅        |
+| Push Button MultiSensor 2-Fold  | CTSA-02/04  | ❌     |           |
+| Push Button MultiSensor 4-Fold  | CTSA-04/04  | ❌     |           |
+| Remote Control 2-Channel (mini) | CHSZ-02/02  | ✅     | ✅        |
+| Room Control (Rc) Touch         | CRCA-00/08  | ✅     | ✅        |
 
 Developers, if you want to debug this, look at the [instructions found here](Debug.md)
 
