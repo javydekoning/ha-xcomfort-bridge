@@ -9,6 +9,8 @@ Eaton xComfort integration with Home Assistant. Note that you need the **xComfor
 | Device                         | Device Type | Tested | Functional |
 |--------------------------------|-------------|--------|------------|
 | Push Button 1-Fold             | CTAA-01/04  | ✅      | ✅        |
+| Push Button 2-Fold             | CTAA-02/04  | ✅      | ✅        |
+| Push Button 4-Fold             | CTAA-04/04  | ✅      | ✅        |
 | Push Button MultiSensor 1-Fold | CTSA-01/04  | ✅      | ✅        |
 | Room Control (Rc) Touch        | CRCA-00/08  | ✅      | ⚠️         |
 
@@ -32,16 +34,14 @@ This repo is a (detached) fork of [jankrib/ha-xcomfort-bridge](https://github.co
 
 1. Create a parent dir (e.g. `~/xcomfort`)
 2. Clone (your fork) of this repo. (e.g. `git clone git@github.com:javydekoning/ha-xcomfort-bridge.git -b dev`)
-3. Clone `https://github.com/javydekoning/xcomfort-python`.
-4. Go into `ha-xcomfort-bridge` directory. `cd ha-xcomfort-bridge`
-5. Open your IDE in the `devcontainer`.
-6. Run task "Run home assistant". Press `ctrl+shift+p` to open command pallet, `Tasks: Run task`, `Run Home Assistant`.
-6. Optional, enable debug logging in `/workspaces/ha-xcomfort-bridge/config/configuration.yaml`:
+3. Open your IDE. Re-open in the `devcontainer`.
+4. Run task "Run home assistant". Press `ctrl+shift+p` to open command pallet, `Tasks: Run task`, `Run Home Assistant`.
+5. Optional, enable debug logging in `/workspaces/ha-xcomfort-bridge/config/configuration.yaml`:
 
-    ```yaml
-    logger:
-      default: warning
-      logs:
-        custom_components.xcomfort_bridge: debug
-        xcomfort: debug
-    ```
+```yaml
+logger:
+  default: warning
+  logs:
+    custom_components.xcomfort_bridge: debug
+    xcomfort: debug
+```
