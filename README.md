@@ -48,3 +48,28 @@ logger:
     custom_components.xcomfort_bridge: debug
     xcomfort: debug
 ```
+
+## Using events in automations
+
+This integration triggers events on button presses for push buttons, virtual Rc Touch buttons or remotes. There are 2 types:
+
+- `press_up`
+- `press_down`
+
+The benefit of this is that you can map more devices than you could when you'd use them as "on/off". E.g. the below automation toggles a light, evertime a use presses up.
+
+```yaml
+alias: Toggle lamp with Remote
+description: "Toggle living room lamp when remote button 1 (left) is pressed up."
+triggers:
+  - entity_id: event.remote_control_2_fold_button_1
+    trigger: state
+conditions:
+  - condition: template
+    value_template: "{{ trigger.to_state.attributes.event_type == 'press_up' }}"
+actions:
+  - target:
+      entity_id: light.my_light
+    action: light.toggle
+mode: single
+```
