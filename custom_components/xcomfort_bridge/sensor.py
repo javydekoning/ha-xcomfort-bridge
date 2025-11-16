@@ -30,9 +30,23 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .const import DOMAIN
 from .hub import XComfortHub
 from .xcomfort.bridge import Room
+from .xcomfort.constants import ComponentTypes
 from .xcomfort.devices import RcTouch, Rocker
 
 _LOGGER = logging.getLogger(__name__)
+
+# Multi-channel component types that should be grouped into a single device
+MULTI_CHANNEL_COMPONENTS = {
+    ComponentTypes.PUSH_BUTTON_2_CHANNEL,
+    ComponentTypes.PUSH_BUTTON_4_CHANNEL,
+    ComponentTypes.PUSH_BUTTON_MULTI_SENSOR_2_CHANNEL,
+    ComponentTypes.PUSH_BUTTON_MULTI_SENSOR_4_CHANNEL,
+}
+
+
+def _is_multi_channel_component(comp_type: int) -> bool:
+    """Check if a component type is multi-channel."""
+    return comp_type in MULTI_CHANNEL_COMPONENTS
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
@@ -61,6 +75,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         _LOGGER.debug("Found %s xcomfort devices", len(list(devices)))
 
         sensors = []
+        processed_multi_sensor_comps = set()  # Track which multi-sensor components we've processed
 
         # Add device-based sensors only (no room-based sensors)
         for device in devices:
@@ -69,7 +84,28 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
                 sensors.append(XComfortRcTouchTemperatureSensor(hub, device))
                 sensors.append(XComfortRcTouchHumiditySensor(hub, device))
             elif isinstance(device, Rocker) and device.has_sensors:
-                _LOGGER.debug("Adding temperature and humidity sensors for multisensor Rocker %s", device.name)
+                comp = device.bridge._comps.get(device.comp_id)  # noqa: SLF001
+                if not comp:
+                    _LOGGER.warning("Rocker %s has sensors but no component, skipping", device.name)
+                    continue
+
+                # For multi-channel components, only create sensors once (not per button)
+                if _is_multi_channel_component(comp.comp_type):
+                    if comp.comp_id in processed_multi_sensor_comps:
+                        _LOGGER.debug(
+                            "Skipping sensor creation for %s - already created for component %s",
+                            device.name,
+                            comp.name,
+                        )
+                        continue
+                    processed_multi_sensor_comps.add(comp.comp_id)
+                    _LOGGER.debug(
+                        "Adding temperature and humidity sensors for multi-channel multisensor component %s",
+                        comp.name,
+                    )
+                else:
+                    _LOGGER.debug("Adding temperature and humidity sensors for multisensor Rocker %s", device.name)
+
                 sensors.append(XComfortRockerTemperatureSensor(hub, device))
                 sensors.append(XComfortRockerHumiditySensor(hub, device))
 
@@ -353,8 +389,14 @@ class XComfortRockerTemperatureSensor(SensorEntity):
         self._attr_unique_id = f"temperature_rocker_{device.device_id}"
 
         # Link to the same device as the event entity
+        # For multi-channel components, use component-based device identifier
+        if comp and _is_multi_channel_component(comp.comp_type):
+            device_identifier = f"event_{DOMAIN}_comp_{device.comp_id}"
+        else:
+            device_identifier = f"event_{DOMAIN}_{device.device_id}"
+
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, f"event_{DOMAIN}_{device.device_id}")},
+            identifiers={(DOMAIN, device_identifier)},
         )
 
         self.hub = hub
@@ -404,8 +446,14 @@ class XComfortRockerHumiditySensor(SensorEntity):
         self._attr_unique_id = f"humidity_rocker_{device.device_id}"
 
         # Link to the same device as the event entity
+        # For multi-channel components, use component-based device identifier
+        if comp and _is_multi_channel_component(comp.comp_type):
+            device_identifier = f"event_{DOMAIN}_comp_{device.comp_id}"
+        else:
+            device_identifier = f"event_{DOMAIN}_{device.device_id}"
+
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, f"event_{DOMAIN}_{device.device_id}")},
+            identifiers={(DOMAIN, device_identifier)},
         )
 
         self.hub = hub

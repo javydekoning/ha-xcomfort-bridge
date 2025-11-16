@@ -27,6 +27,24 @@ COMPONENT_TYPE_TO_MODEL = {
     ComponentTypes.RC_TOUCH: "RC Touch",
 }
 
+# Multi-channel component types that should be grouped into a single device
+MULTI_CHANNEL_COMPONENTS = {
+    ComponentTypes.PUSH_BUTTON_2_CHANNEL: 2,
+    ComponentTypes.PUSH_BUTTON_4_CHANNEL: 4,
+    ComponentTypes.PUSH_BUTTON_MULTI_SENSOR_2_CHANNEL: 2,
+    ComponentTypes.PUSH_BUTTON_MULTI_SENSOR_4_CHANNEL: 4,
+}
+
+
+def _is_multi_channel_component(comp_type: int) -> bool:
+    """Check if a component type is multi-channel."""
+    return comp_type in MULTI_CHANNEL_COMPONENTS
+
+
+def _get_channel_count(comp_type: int) -> int:
+    """Get the number of channels for a multi-channel component."""
+    return MULTI_CHANNEL_COMPONENTS.get(comp_type, 1)
+
 
 def _is_momentary_rocker(comp: Comp) -> bool:
     """Check if a rocker component is a momentary pushbutton (neutral position).
@@ -52,20 +70,73 @@ async def async_setup_entry(
         await hub.has_done_initial_load.wait()
 
         events = []
+        processed_rockers = set()  # Track which rockers we've already processed
+
+        # Group rockers by component ID for multi-channel devices
+        rockers_by_comp = {}
         for device in hub.devices:
             if isinstance(device, Rocker):
+                comp_id = device.payload.get("compId", "")
+                if comp_id:
+                    if comp_id not in rockers_by_comp:
+                        rockers_by_comp[comp_id] = []
+                    rockers_by_comp[comp_id].append(device)
+
+        # Process rockers
+        for device in hub.devices:
+            if isinstance(device, Rocker):
+                if device.device_id in processed_rockers:
+                    continue
+
                 comp = device.bridge._comps.get(device.payload.get("compId", ""))
+                if not comp:
+                    _LOGGER.warning("Rocker %s has no component, skipping", device.name)
+                    continue
+
                 is_momentary = device.has_sensors or _is_momentary_rocker(comp)
-                _LOGGER.debug(
-                    "Adding rocker %s (comp: %s, comp_type: %s, has_sensors: %s, is_momentary: %s)",
-                    device.name,
-                    comp.name if comp else "Unknown",
-                    comp.comp_type if comp else None,
-                    device.has_sensors,
-                    is_momentary,
-                )
-                event = XComfortEvent(hass, hub, device, comp)
-                events.append(event)
+
+                # Check if this is a multi-channel component
+                if _is_multi_channel_component(comp.comp_type):
+                    # Get all rockers for this component
+                    comp_rockers = rockers_by_comp.get(comp.comp_id, [])
+                    # Sort by device_id to ensure consistent ordering
+                    comp_rockers.sort(key=lambda d: d.device_id)
+
+                    _LOGGER.debug(
+                        "Creating multi-channel device for component %s (type: %s) with %d rockers",
+                        comp.name,
+                        comp.comp_type,
+                        len(comp_rockers),
+                    )
+
+                    # Create an event entity for each rocker in this component
+                    for idx, rocker in enumerate(comp_rockers):
+                        button_number = idx + 1
+                        _LOGGER.debug(
+                            "Adding rocker %s as button %d of multi-channel component %s",
+                            rocker.name,
+                            button_number,
+                            comp.name,
+                        )
+                        event = XComfortEvent(
+                            hass, hub, rocker, comp, button_number=button_number
+                        )
+                        events.append(event)
+                        processed_rockers.add(rocker.device_id)
+                else:
+                    # Single channel device - create event as before
+                    _LOGGER.debug(
+                        "Adding rocker %s (comp: %s, comp_type: %s, has_sensors: %s, is_momentary: %s)",
+                        device.name,
+                        comp.name,
+                        comp.comp_type,
+                        device.has_sensors,
+                        is_momentary,
+                    )
+                    event = XComfortEvent(hass, hub, device, comp)
+                    events.append(event)
+                    processed_rockers.add(device.device_id)
+
             elif isinstance(device, RcTouch):
                 comp = device.bridge._comps.get(device.comp_id)
                 _LOGGER.debug(
@@ -85,7 +156,14 @@ async def async_setup_entry(
 class XComfortEvent(EventEntity):
     """Entity class for xComfort event button."""
 
-    def __init__(self, hass: HomeAssistant, hub: XComfortHub, device: Rocker, comp: Comp) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        hub: XComfortHub,
+        device: Rocker,
+        comp: Comp,
+        button_number: int | None = None,
+    ) -> None:
         """Initialize the Event entity.
 
         Args:
@@ -93,6 +171,7 @@ class XComfortEvent(EventEntity):
             hub: XComfortHub instance
             device: Rocker device instance
             comp: XComfort Comp instance
+            button_number: Button number for multi-channel devices (1-based)
 
         """
         self._attr_device_class = EventDeviceClass.BUTTON
@@ -106,15 +185,36 @@ class XComfortEvent(EventEntity):
             self._attr_event_types = ["on", "off"]
 
         self._attr_has_entity_name = True
-        self._attr_name = f"{comp.name} {device.name}"
+        self._button_number = button_number
+        self._comp = comp
+
+        # Set entity name based on whether it's a multi-channel device
+        if button_number is not None:
+            self._attr_name = f"Button {button_number}"
+        else:
+            self._attr_name = f"{comp.name} {device.name}"
+
         self._attr_unique_id = f"event_{DOMAIN}_{device.device_id}"
         self._device = device
 
         control_ids = device.payload.get("controlId", [])
         device_info_set = False
 
-        if len(control_ids) == 1:
-            # exhactly one controlled device, will add it to the same HASS-device
+        # For multi-channel components, always create a shared device
+        if _is_multi_channel_component(comp.comp_type):
+            model = COMPONENT_TYPE_TO_MODEL.get(comp.comp_type, "Unknown")
+            # Use component ID as the device identifier so all buttons group together
+            self._attr_device_info = DeviceInfo(
+                identifiers={(DOMAIN, f"event_{DOMAIN}_comp_{comp.comp_id}")},
+                name=comp.name,
+                manufacturer="Eaton",
+                model=model,
+            )
+            device_info_set = True
+
+        # For single-channel devices, check if it controls exactly one device
+        if not device_info_set and len(control_ids) == 1:
+            # exactly one controlled device, will add it to the same HASS-device
 
             # ignore private-member-access because library miss a non-async way to get devices
             # ruff: noqa: SLF001
