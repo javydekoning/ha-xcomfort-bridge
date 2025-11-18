@@ -1,6 +1,24 @@
 """Constants module for xComfort integration."""
 
-from enum import IntEnum
+from enum import Enum, IntEnum
+
+
+class ClimateMode(Enum):
+    """Climate mode enumeration."""
+
+    FrostProtection = 1  # Enforces: ClimateState=HeatingManual
+    Eco = 2
+    Comfort = 3
+
+
+class ClimateState(Enum):
+    """Climate state enumeration."""
+
+    Off = 0
+    HeatingAuto = 1
+    HeatingManual = 2
+    CoolingAuto = 3
+    CoolingManual = 4
 
 
 class Messages(IntEnum):

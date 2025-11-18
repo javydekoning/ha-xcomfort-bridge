@@ -8,7 +8,7 @@ import aiohttp
 
 from .comp import Comp, CompState  # noqa: F401
 from .connection import SecureBridgeConnection, setup_secure_connection
-from .constants import ComponentTypes, DeviceTypes, Messages
+from .constants import ClimateMode, ComponentTypes, DeviceTypes, Messages
 from .devices import (
     BridgeDevice,
     DoorSensor,
@@ -21,7 +21,7 @@ from .devices import (
 )
 
 # Some HA code relies on bridge having imported these:
-from .room import RctMode, RctModeRange, RctState, Room, RoomState  # noqa: F401
+from .room import RctModeRange, Room, RoomState  # noqa: F401
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -54,9 +54,9 @@ class Bridge:
 
         # Values determined from using setpoint slider in app.
         self.rctsetpointallowedvalues = {
-            RctMode.Protection: RctModeRange(5.0, 20.0),
-            RctMode.Eco: RctModeRange(10.0, 30.0),
-            RctMode.Comfort: RctModeRange(18.0, 40.0),
+            ClimateMode.FrostProtection: RctModeRange(5.0, 20.0),
+            ClimateMode.Eco: RctModeRange(10.0, 30.0),
+            ClimateMode.Comfort: RctModeRange(18.0, 40.0),
         }
         self._comps = {}
         self._devices = {}

@@ -1,4 +1,5 @@
 """Climate platform for xComfort integration with Home Assistant."""
+
 import logging
 
 from homeassistant.components.climate import ClimateEntity
@@ -16,8 +17,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
 from .hub import XComfortHub
-from .xcomfort.bridge import RctMode, RctState, Room
-from .xcomfort.connection import Messages
+from .xcomfort.bridge import Room
+from .xcomfort.constants import ClimateMode, ClimateState, Messages
 from .xcomfort.devices import RcTouch
 
 SUPPORT_FLAGS = ClimateEntityFeature.TARGET_TEMPERATURE | ClimateEntityFeature.PRESET_MODE
@@ -55,18 +56,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         rcts = []
         for device in rc_touch_devices:
             # Get the room associated with this RcTouch device from the payload
-            if device.state.value is not None and hasattr(device.state.value, 'raw'):
-                temp_room_id = device.state.value.raw.get('tempRoom')
+            if device.state.value is not None and hasattr(device.state.value, "raw"):
+                temp_room_id = device.state.value.raw.get("tempRoom")
                 if temp_room_id is not None:
                     room = rooms_by_id.get(temp_room_id)
                     if room is not None:
-                        _LOGGER.debug("Creating climate entity for RcTouch device '%s' with room '%s'",
-                                    device.name, room.name)
+                        _LOGGER.debug(
+                            "Creating climate entity for RcTouch device '%s' with room '%s'", device.name, room.name
+                        )
                         rct = HASSXComfortRcTouch(hass, hub, room, device)
                         rcts.append(rct)
                     else:
-                        _LOGGER.warning("RcTouch device '%s' references room %d which was not found",
-                                      device.name, temp_room_id)
+                        _LOGGER.warning(
+                            "RcTouch device '%s' references room %d which was not found", device.name, temp_room_id
+                        )
                 else:
                     _LOGGER.debug("RcTouch device '%s' has no tempRoom in payload", device.name)
             else:
@@ -82,7 +85,7 @@ class HASSXComfortRcTouch(ClimateEntity):
     """Representation of an xComfort RC Touch climate device."""
 
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
-    _attr_hvac_modes = [HVACMode.AUTO]
+    _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT, HVACMode.COOL]
     _attr_supported_features = SUPPORT_FLAGS
 
     def __init__(self, hass: HomeAssistant, hub: XComfortHub, room: Room, device: RcTouch):
@@ -102,8 +105,8 @@ class HASSXComfortRcTouch(ClimateEntity):
         self._name = device.name
         self._state = None
 
-        self.rctpreset = RctMode.Comfort
-        self.rctstate = RctState.Idle
+        self.rctpreset = ClimateMode.Comfort
+        self.rctstate = ClimateState.Off
         self.temperature = 20.0
         self.humidity = 50.0
         self.currentsetpoint = 20.0
@@ -138,12 +141,14 @@ class HASSXComfortRcTouch(ClimateEntity):
 
         if self._state is not None:
             if "currentMode" in state.raw:
-                self.rctpreset = RctMode(state.raw["currentMode"])
+                self.rctpreset = ClimateMode(state.raw["currentMode"])
             if "mode" in state.raw:
-                self.rctpreset = RctMode(state.raw["mode"])
+                self.rctpreset = ClimateMode(state.raw["mode"])
+            if "state" in state.raw:
+                self.rctstate = ClimateState(state.raw["state"])
             self.currentsetpoint = state.setpoint
 
-            _LOGGER.debug("Room state changed %s : %s", self._name, state)
+            _LOGGER.debug("Room state changed %s : %s (ClimateState: %s)", self._name, state, self.rctstate.name)
 
             self.schedule_update_ha_state()
 
@@ -158,9 +163,43 @@ class HASSXComfortRcTouch(ClimateEntity):
             self.temperature = state.temperature
             self.humidity = state.humidity
 
-            _LOGGER.debug("Device state changed %s : temp=%s, humidity=%s",
-                         self._name, state.temperature, state.humidity)
+            _LOGGER.debug(
+                "Device state changed %s : temp=%s, humidity=%s", self._name, state.temperature, state.humidity
+            )
 
+            self.schedule_update_ha_state()
+
+    async def async_set_hvac_mode(self, hvac_mode: HVACMode):
+        """Set new HVAC mode.
+
+        Args:
+            hvac_mode: The new HVAC mode to set (OFF, HEAT, or COOL)
+
+        """
+        _LOGGER.debug("Set HVAC mode %s", hvac_mode)
+
+        # Map HVAC mode to ClimateState
+        if hvac_mode == HVACMode.OFF:
+            new_state = ClimateState.Off
+        elif hvac_mode == HVACMode.HEAT:
+            new_state = ClimateState.HeatingAuto
+        elif hvac_mode == HVACMode.COOL:
+            new_state = ClimateState.CoolingAuto
+        else:
+            _LOGGER.warning("Unsupported HVAC mode: %s", hvac_mode)
+            return
+
+        if self.rctstate != new_state:
+            # Send message to set the new state
+            payload = {
+                "roomId": self._room.room_id,
+                "mode": self.rctpreset.value,
+                "state": new_state.value,
+                "setpoint": self.currentsetpoint,
+                "confirmed": False,
+            }
+            await self._room.bridge.send_message(Messages.SET_HEATING_STATE, payload)
+            self.rctstate = new_state
             self.schedule_update_ha_state()
 
     async def async_set_preset_mode(self, preset_mode):
@@ -172,15 +211,34 @@ class HASSXComfortRcTouch(ClimateEntity):
         """
         _LOGGER.debug("Set Preset mode %s", preset_mode)
 
-        if preset_mode == "Cool":
-            mode = RctMode.Cool
-        if preset_mode == PRESET_ECO:
-            mode = RctMode.Eco
-        if preset_mode == PRESET_COMFORT:
-            mode = RctMode.Comfort
+        if preset_mode == "Frost Protection":
+            mode = ClimateMode.FrostProtection
+        elif preset_mode == PRESET_ECO:
+            mode = ClimateMode.Eco
+        elif preset_mode == PRESET_COMFORT:
+            mode = ClimateMode.Comfort
+        else:
+            _LOGGER.warning("Unsupported preset mode: %s", preset_mode)
+            return
+
         if self.rctpreset != mode:
-            await self._room.set_mode(mode)
+            # FrostProtection mode enforces HeatingManual state
+            if mode == ClimateMode.FrostProtection:
+                new_state = ClimateState.HeatingManual
+            else:
+                # Keep current state for other modes, unless it's Off
+                new_state = self.rctstate if self.rctstate != ClimateState.Off else ClimateState.HeatingAuto
+
+            payload = {
+                "roomId": self._room.room_id,
+                "mode": mode.value,
+                "state": new_state.value,
+                "setpoint": self.currentsetpoint,
+                "confirmed": False,
+            }
+            await self._room.bridge.send_message(Messages.SET_HEATING_STATE, payload)
             self.rctpreset = mode
+            self.rctstate = new_state
             self.schedule_update_ha_state()
 
     async def async_set_temperature(self, **kwargs):
@@ -198,7 +256,7 @@ class HASSXComfortRcTouch(ClimateEntity):
         # Also consider changing the `mode` object on RoomState class to be just a number,
         # at current it is an object(possibly due to erroneous parsing of the 300/310-messages)
         setpoint = kwargs["temperature"]
-        setpointrange = self._room.bridge.rctsetpointallowedvalues[RctMode(self.rctpreset)]
+        setpointrange = self._room.bridge.rctsetpointallowedvalues[ClimateMode(self.rctpreset)]
 
         setpoint = min(setpointrange.Max, setpoint)
 
@@ -207,7 +265,7 @@ class HASSXComfortRcTouch(ClimateEntity):
         payload = {
             "roomId": self._room.room_id,
             "mode": self.rctpreset.value,
-            "state": self._room.state.value.rctstate.value,
+            "state": self.rctstate.value,
             "setpoint": setpoint,
             "confirmed": False,
         }
@@ -254,8 +312,16 @@ class HASSXComfortRcTouch(ClimateEntity):
 
     @property
     def hvac_mode(self):
-        """Return current HVAC mode."""
-        return HVACMode.AUTO
+        """Return current HVAC mode based on ClimateState."""
+        if self.rctstate == ClimateState.Off:
+            return HVACMode.OFF
+        elif self.rctstate in (ClimateState.HeatingAuto, ClimateState.HeatingManual):
+            return HVACMode.HEAT
+        elif self.rctstate in (ClimateState.CoolingAuto, ClimateState.CoolingManual):
+            return HVACMode.COOL
+        else:
+            _LOGGER.warning("Unknown ClimateState: %s, defaulting to OFF", self.rctstate)
+            return HVACMode.OFF
 
     @property
     def current_humidity(self):
@@ -265,8 +331,16 @@ class HASSXComfortRcTouch(ClimateEntity):
     @property
     def hvac_action(self):
         """Return the current running HVAC action."""
+        if self._state is None:
+            return HVACAction.IDLE
+
         if self._state.power > 0:
-            return HVACAction.HEATING
+            # Check if we're in heating or cooling mode
+            if self.rctstate in (ClimateState.HeatingAuto, ClimateState.HeatingManual):
+                return HVACAction.HEATING
+            elif self.rctstate in (ClimateState.CoolingAuto, ClimateState.CoolingManual):
+                return HVACAction.COOLING
+
         return HVACAction.IDLE
 
     @property
@@ -291,16 +365,16 @@ class HASSXComfortRcTouch(ClimateEntity):
     @property
     def preset_modes(self):
         """Return available preset modes."""
-        return ["Cool", PRESET_ECO, PRESET_COMFORT]
+        return ["Frost Protection", PRESET_ECO, PRESET_COMFORT]
 
     @property
     def preset_mode(self):
         """Return the current preset mode."""
-        if self.rctpreset == RctMode.Cool:
-            return "Cool"
-        if self.rctpreset == RctMode.Eco:
+        if self.rctpreset == ClimateMode.FrostProtection:
+            return "Frost Protection"
+        if self.rctpreset == ClimateMode.Eco:
             return PRESET_ECO
-        if self.rctpreset == RctMode.Comfort:
+        if self.rctpreset == ClimateMode.Comfort:
             return PRESET_COMFORT
         _LOGGER.warning("Unexpected preset mode: %s", self.rctpreset)
         return None
