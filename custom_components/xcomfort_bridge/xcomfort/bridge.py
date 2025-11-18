@@ -54,7 +54,7 @@ class Bridge:
 
         # Values determined from using setpoint slider in app.
         self.rctsetpointallowedvalues = {
-            RctMode.Cool: RctModeRange(5.0, 20.0),
+            RctMode.Protection: RctModeRange(5.0, 20.0),
             RctMode.Eco: RctModeRange(10.0, 30.0),
             RctMode.Comfort: RctModeRange(18.0, 40.0),
         }
