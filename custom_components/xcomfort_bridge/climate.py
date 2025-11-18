@@ -85,7 +85,7 @@ class HASSXComfortRcTouch(ClimateEntity):
     """Representation of an xComfort RC Touch climate device."""
 
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
-    _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT, HVACMode.COOL]
+    # _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT, HVACMode.COOL]
     _attr_supported_features = SUPPORT_FLAGS
 
     def __init__(self, hass: HomeAssistant, hub: XComfortHub, room: Room, device: RcTouch):
@@ -344,6 +344,11 @@ class HASSXComfortRcTouch(ClimateEntity):
     def current_temperature(self):
         """Return the current temperature."""
         return self.temperature
+
+    @property
+    def hvac_modes(self):
+        """Return available HVAC modes (read-only, only current mode)."""
+        return [self.hvac_mode]
 
     @property
     def hvac_mode(self):

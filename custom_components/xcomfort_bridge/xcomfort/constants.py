@@ -188,3 +188,12 @@ class ComponentTypes(IntEnum):
     PUSH_BUTTON_MULTI_SENSOR_1_CHANNEL = 87
     PUSH_BUTTON_MULTI_SENSOR_2_CHANNEL = 88
     PUSH_BUTTON_MULTI_SENSOR_4_CHANNEL = 89
+
+
+class DeviceStateUpdateText(IntEnum):
+    """Device types for xComfort devices."""
+
+    DEVICE_TEMPERATURE = 1109
+    AMBIENT_TEMPERATURE = 1222
+    HUMIDITY = 1223
+    VALVE_OPEN_PERCENT = 1225
