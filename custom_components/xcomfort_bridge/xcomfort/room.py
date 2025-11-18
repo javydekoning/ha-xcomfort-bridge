@@ -13,7 +13,7 @@ _LOGGER = logging.getLogger(__name__)
 class RctMode(Enum):
     """RCT mode enumeration."""
 
-    Cool = 1
+    Protection = 1
     Eco = 2
     Comfort = 3
 
@@ -21,9 +21,11 @@ class RctMode(Enum):
 class RctState(Enum):
     """RCT state enumeration."""
 
-    Idle = 0
-    Auto = 1
-    Active = 2
+    Off = 0
+    HeatingAuto = 1
+    HeatingManual = 2
+    CoolingAuto = 3
+    CoolingManual = 4
 
 
 class RctModeRange:
