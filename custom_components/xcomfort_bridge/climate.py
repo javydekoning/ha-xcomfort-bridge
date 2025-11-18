@@ -373,7 +373,13 @@ class HASSXComfortRcTouch(ClimateEntity):
         if self._state is None:
             return HVACAction.IDLE
 
-        if self._state.power > 0:
+        # Use valve state to determine if actively heating/cooling
+        valve = self._state.raw.get("valve", 0) if self._state.raw else 0
+
+        # Fall back to power if valve is not available or is 0
+        is_active = valve > 0 or self._state.power > 0
+
+        if is_active:
             # Check if we're in heating or cooling mode
             if self.rctstate in (ClimateState.HeatingAuto, ClimateState.HeatingManual):
                 return HVACAction.HEATING
