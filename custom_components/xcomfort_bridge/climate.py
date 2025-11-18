@@ -179,12 +179,12 @@ class HASSXComfortRcTouch(ClimateEntity):
         _LOGGER.debug("Set HVAC mode %s", hvac_mode)
 
         # Map HVAC mode to ClimateState
-        if hvac_mode == HVACMode.OFF:
+        if hvac_mode == HVACMode.OFF:  # 'mode': 1, 'state': 0, 'setpoint': 0.0
             new_state = ClimateState.Off
-        elif hvac_mode == HVACMode.HEAT:
+        elif hvac_mode == HVACMode.HEAT:  # 'mode': 3, 'state': 1, 'setpoint': 22.0
             new_state = ClimateState.HeatingAuto
         elif hvac_mode == HVACMode.COOL:
-            new_state = ClimateState.CoolingAuto
+            new_state = ClimateState.CoolingAuto  # 'mode': 3, 'state': 3, 'setpoint': 0.0,
         else:
             _LOGGER.warning("Unsupported HVAC mode: %s", hvac_mode)
             return
@@ -193,7 +193,7 @@ class HASSXComfortRcTouch(ClimateEntity):
             # Send message to set the new state
             payload = {
                 "roomId": self._room.room_id,
-                "mode": self.rctpreset.value,
+                "mode": ClimateMode.FrostProtection.value if new_state == ClimateState.Off else self.rctpreset.value,
                 "state": new_state.value,
                 "setpoint": 0.0 if new_state == ClimateState.Off else self.currentsetpoint,
                 "confirmed": False,
