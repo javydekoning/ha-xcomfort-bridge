@@ -195,7 +195,7 @@ class HASSXComfortRcTouch(ClimateEntity):
                 "roomId": self._room.room_id,
                 "mode": self.rctpreset.value,
                 "state": new_state.value,
-                "setpoint": self.currentsetpoint,
+                "setpoint": 0.0 if new_state == ClimateState.Off else self.currentsetpoint,
                 "confirmed": False,
             }
             await self._room.bridge.send_message(Messages.SET_HEATING_STATE, payload)
@@ -222,23 +222,58 @@ class HASSXComfortRcTouch(ClimateEntity):
             return
 
         if self.rctpreset != mode:
-            # FrostProtection mode enforces HeatingManual state
+            # Default setpoint values for each mode
+            default_setpoints = {
+                ClimateMode.FrostProtection: 8.0,
+                ClimateMode.Eco: 18.0,
+                ClimateMode.Comfort: 21.0,
+            }
+
+            # Get the default setpoint for the new mode
+            new_setpoint = default_setpoints[mode]
+
+            if self.rctstate == ClimateState.Off:
+                _LOGGER.warning("Cannot set mode %s when state is Off", mode.name)
+                return
+
             if mode == ClimateMode.FrostProtection:
                 new_state = ClimateState.HeatingManual
-            else:
-                # Keep current state for other modes, unless it's Off
-                new_state = self.rctstate if self.rctstate != ClimateState.Off else ClimateState.HeatingAuto
 
-            payload = {
+            if mode == ClimateMode.Eco:
+                if self.rctstate in [ClimateState.HeatingAuto, ClimateState.HeatingManual]:
+                    new_state = ClimateState.HeatingManual
+                else:
+                    new_state = ClimateState.CoolingManual
+
+            if mode == ClimateMode.Comfort:
+                if self.rctstate in [ClimateState.HeatingAuto, ClimateState.HeatingManual]:
+                    new_state = ClimateState.HeatingManual
+                else:
+                    new_state = ClimateState.CoolingManual
+
+            # Step 1: Flip to manual state first.
+            payload_state = {
                 "roomId": self._room.room_id,
-                "mode": mode.value,
-                "state": new_state.value,
+                "mode": self.rctpreset.value,
+                "state": new_state.value,  # Update state first
                 "setpoint": self.currentsetpoint,
                 "confirmed": False,
             }
-            await self._room.bridge.send_message(Messages.SET_HEATING_STATE, payload)
+            await self._room.bridge.send_message(Messages.SET_HEATING_STATE, payload_state)
+            self.rctstate = ClimateState.HeatingManual
+
+            # Step 2: Change the mode (preset) with default setpoint
+            payload_mode = {
+                "roomId": self._room.room_id,
+                "mode": mode.value,
+                "state": new_state.value,
+                "setpoint": new_setpoint,
+                "confirmed": False,
+            }
+            await self._room.bridge.send_message(Messages.SET_HEATING_STATE, payload_mode)
             self.rctpreset = mode
             self.rctstate = new_state
+            self.currentsetpoint = new_setpoint
             self.schedule_update_ha_state()
 
     async def async_set_temperature(self, **kwargs):
@@ -315,13 +350,12 @@ class HASSXComfortRcTouch(ClimateEntity):
         """Return current HVAC mode based on ClimateState."""
         if self.rctstate == ClimateState.Off:
             return HVACMode.OFF
-        elif self.rctstate in (ClimateState.HeatingAuto, ClimateState.HeatingManual):
+        if self.rctstate in (ClimateState.HeatingAuto, ClimateState.HeatingManual):
             return HVACMode.HEAT
-        elif self.rctstate in (ClimateState.CoolingAuto, ClimateState.CoolingManual):
+        if self.rctstate in (ClimateState.CoolingAuto, ClimateState.CoolingManual):
             return HVACMode.COOL
-        else:
-            _LOGGER.warning("Unknown ClimateState: %s, defaulting to OFF", self.rctstate)
-            return HVACMode.OFF
+        _LOGGER.warning("Unknown ClimateState: %s, defaulting to OFF", self.rctstate)
+        return HVACMode.OFF
 
     @property
     def current_humidity(self):
@@ -338,7 +372,7 @@ class HASSXComfortRcTouch(ClimateEntity):
             # Check if we're in heating or cooling mode
             if self.rctstate in (ClimateState.HeatingAuto, ClimateState.HeatingManual):
                 return HVACAction.HEATING
-            elif self.rctstate in (ClimateState.CoolingAuto, ClimateState.CoolingManual):
+            if self.rctstate in (ClimateState.CoolingAuto, ClimateState.CoolingManual):
                 return HVACAction.COOLING
 
         return HVACAction.IDLE
