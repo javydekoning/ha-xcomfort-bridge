@@ -44,65 +44,70 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         devices = hub.devices
         rooms = hub.rooms
 
-        _LOGGER.debug("Found %d xcomfort devices", len(list(devices)))
+        _LOGGER.debug("Found %d xcomfort rooms", len(list(rooms)))
 
-        # Filter for RcTouch devices (devType=450)
-        rc_touch_devices = [device for device in devices if isinstance(device, RcTouch)]
-        _LOGGER.debug("Found %d RcTouch devices", len(rc_touch_devices))
+        # Create a mapping of device_id to device for linking room sensors
+        devices_by_id = {device.device_id: device for device in devices}
 
-        # Create a mapping of room_id to room for easy lookup
-        rooms_by_id = {room.room_id: room for room in rooms}
+        climate_entities = []
+        for room in rooms:
+            # Check if room has climate control (temperatureOnly must exist and be False)
+            if room.state.value is not None and hasattr(room.state.value, "raw"):
+                raw = room.state.value.raw
 
-        rcts = []
-        for device in rc_touch_devices:
-            # Get the room associated with this RcTouch device from the payload
-            if device.state.value is not None and hasattr(device.state.value, "raw"):
-                temp_room_id = device.state.value.raw.get("tempRoom")
-                if temp_room_id is not None:
-                    room = rooms_by_id.get(temp_room_id)
-                    if room is not None:
-                        _LOGGER.debug(
-                            "Creating climate entity for RcTouch device '%s' with room '%s'", device.name, room.name
-                        )
-                        rct = HASSXComfortRcTouch(hass, hub, room, device)
-                        rcts.append(rct)
-                    else:
-                        _LOGGER.warning(
-                            "RcTouch device '%s' references room %d which was not found", device.name, temp_room_id
-                        )
+                # Only create climate entity if temperatureOnly exists and is False
+                if "temperatureOnly" in raw and raw.get("temperatureOnly") is False:
+                    # Get the sensor device if roomSensorId is specified
+                    sensor_device = None
+                    room_sensor_id = raw.get("roomSensorId")
+                    if room_sensor_id is not None:
+                        sensor_device = devices_by_id.get(room_sensor_id)
+                        if sensor_device:
+                            _LOGGER.debug(
+                                "Room '%s' linked to sensor device '%s' (ID: %d)",
+                                room.name,
+                                sensor_device.name if hasattr(sensor_device, "name") else "Unknown",
+                                room_sensor_id,
+                            )
+
+                    _LOGGER.debug("Creating climate entity for room '%s' (temperatureOnly=False)", room.name)
+                    climate_entity = HASSXComfortRoomClimate(hass, hub, room, sensor_device)
+                    climate_entities.append(climate_entity)
                 else:
-                    _LOGGER.debug("RcTouch device '%s' has no tempRoom in payload", device.name)
-            else:
-                _LOGGER.debug("RcTouch device '%s' has no state yet", device.name)
+                    _LOGGER.debug(
+                        "Skipping climate entity for room '%s' (temperatureOnly=%s)",
+                        room.name,
+                        raw.get("temperatureOnly", "not set"),
+                    )
 
-        _LOGGER.debug("Added %d rc touch units", len(rcts))
-        async_add_entities(rcts)
+        _LOGGER.debug("Added %d room climate entities", len(climate_entities))
+        async_add_entities(climate_entities)
 
     entry.async_create_task(hass, _wait_for_hub_then_setup())
 
 
-class HASSXComfortRcTouch(ClimateEntity):
-    """Representation of an xComfort RC Touch climate device."""
+class HASSXComfortRoomClimate(ClimateEntity):
+    """Representation of an xComfort Room climate control."""
 
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
     # _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT, HVACMode.COOL]
     _attr_supported_features = SUPPORT_FLAGS
 
-    def __init__(self, hass: HomeAssistant, hub: XComfortHub, room: Room, device: RcTouch):
+    def __init__(self, hass: HomeAssistant, hub: XComfortHub, room: Room, sensor_device: RcTouch | None = None):
         """Initialize the climate device.
 
         Args:
             hass: Home Assistant instance
             hub: XComfort hub instance
             room: Room instance from xComfort
-            device: RcTouch device instance
+            sensor_device: Optional sensor device (e.g., RcTouch) for temperature/humidity readings
 
         """
         self.hass = hass
         self.hub = hub
         self._room = room
-        self._device = device
-        self._name = device.name
+        self._sensor_device = sensor_device
+        self._name = room.name
         self._state = None
 
         self.rctpreset = ClimateMode.Comfort
@@ -111,27 +116,29 @@ class HASSXComfortRcTouch(ClimateEntity):
         self.humidity = 50.0
         self.currentsetpoint = 20.0
 
-        self._unique_id = f"climate_{DOMAIN}_{hub.identifier}-{device.device_id}"
+        self._unique_id = f"climate_{DOMAIN}_{hub.identifier}-room_{room.room_id}"
 
     async def async_added_to_hass(self):
         """Run when entity about to be added to hass."""
 
-        _LOGGER.debug("Added to hass %s", self._name)
+        _LOGGER.debug("Added to hass room climate %s", self._name)
 
-        # Subscribe to room state for heating control (setpoint, mode, power)
+        # Subscribe to room state for all climate data
         if self._room.state is None:
             _LOGGER.debug("Room state is null for %s", self._name)
         else:
             self._room.state.subscribe(lambda state: self._room_state_change(state))
 
-        # Subscribe to device state for temperature and humidity
-        if self._device.state is None:
-            _LOGGER.debug("Device state is null for %s", self._name)
-        else:
-            self._device.state.subscribe(lambda state: self._device_state_change(state))
+        # Optionally subscribe to sensor device for temperature and humidity if linked
+        if self._sensor_device is not None:
+            if self._sensor_device.state is None:
+                _LOGGER.debug("Sensor device state is null for %s", self._name)
+            else:
+                _LOGGER.debug("Subscribing to sensor device for room %s", self._name)
+                self._sensor_device.state.subscribe(lambda state: self._sensor_device_state_change(state))
 
     def _room_state_change(self, state):
-        """Handle room state changes for heating control.
+        """Handle room state changes for climate control.
 
         Args:
             state: New state from the room
@@ -148,23 +155,33 @@ class HASSXComfortRcTouch(ClimateEntity):
                 self.rctstate = ClimateState(state.raw["state"])
             self.currentsetpoint = state.setpoint
 
+            # Get temperature and humidity from room state (may be overridden by sensor device)
+            if state.temperature is not None:
+                self.temperature = state.temperature
+            if state.humidity is not None:
+                self.humidity = state.humidity
+
             _LOGGER.debug("Room state changed %s : %s (ClimateState: %s)", self._name, state, self.rctstate.name)
 
             self.schedule_update_ha_state()
 
-    def _device_state_change(self, state):
-        """Handle device state changes for temperature and humidity.
+    def _sensor_device_state_change(self, state):
+        """Handle sensor device state changes for temperature and humidity.
 
         Args:
-            state: New state from the RcTouch device
+            state: New state from the sensor device (e.g., RcTouch)
 
         """
         if state is not None:
+            # Sensor device readings override room readings
             self.temperature = state.temperature
             self.humidity = state.humidity
 
             _LOGGER.debug(
-                "Device state changed %s : temp=%s, humidity=%s", self._name, state.temperature, state.humidity
+                "Sensor device state changed for room %s : temp=%s, humidity=%s",
+                self._name,
+                state.temperature,
+                state.humidity,
             )
 
             self.schedule_update_ha_state()
@@ -314,11 +331,13 @@ class HASSXComfortRcTouch(ClimateEntity):
     @property
     def device_info(self):
         """Return device information about this entity."""
+        # Link to the room device created by sensors
+        device_id = f"room_{DOMAIN}_{self.hub.identifier}_{self._room.room_id}"
         return {
-            "identifiers": {(DOMAIN, self.unique_id)},
+            "identifiers": {(DOMAIN, device_id)},
             "name": self._name,
             "manufacturer": "Eaton",
-            "model": "RC Touch",
+            "model": "xComfort Room",
             "via_device": (DOMAIN, self.hub.hub_id),
         }
 

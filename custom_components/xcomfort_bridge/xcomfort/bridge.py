@@ -5,6 +5,7 @@ from enum import Enum
 import logging
 
 import aiohttp
+import rx
 
 from .comp import Comp, CompState  # noqa: F401
 from .connection import SecureBridgeConnection, setup_secure_connection
@@ -73,6 +74,9 @@ class Bridge:
         self.fw_version = None
         self.home_scenes_count = 0
         self.home_data = {}
+
+        # Bridge state (for sensors)
+        self.bridge_state = rx.subject.BehaviorSubject(None)
 
         self.logger = lambda x: _LOGGER.warning(x)
 
@@ -423,6 +427,24 @@ class Bridge:
             self.home_scenes_count,
         )
 
+    def _handle_SET_BRIDGE_STATE(self, payload):
+        """Handle bridge state updates for sensors."""
+        _LOGGER.debug(
+            "Bridge %s (%s) state updated: %s",
+            self.bridge_name or "Unknown",
+            self.bridge_id or "Not initialized",
+            payload,
+        )
+
+        # Only process if bridge is initialized
+        if self.bridge_id is None:
+            _LOGGER.warning(
+                "Received bridge state update before bridge initialization complete - bridge_id not set yet"
+            )
+            return
+
+        self.bridge_state.on_next(payload)
+
     def _handle_UNKNOWN(self, message_type, payload):
         """Handle unknown message types."""
         _LOGGER.warning("Unhandled message type [%s]: %s", message_type.name, payload)
@@ -483,6 +505,10 @@ class Bridge:
         """Get all components."""
         await self.wait_for_initialization()
 
+        _LOGGER.debug("Getting all components - total count: %d", len(self._comps))
+        for comp_id, comp in self._comps.items():
+            _LOGGER.debug("Component: id=%s, name=%s, type=%s", comp_id, comp.name, type(comp).__name__)
+
         return self._comps
 
     async def get_devices(self):
@@ -498,5 +524,9 @@ class Bridge:
     async def get_rooms(self):
         """Get all rooms."""
         await self.wait_for_initialization()
+
+        _LOGGER.debug("Getting all rooms - total count: %d", len(self._rooms))
+        for room_id, room in self._rooms.items():
+            _LOGGER.debug("Room: id=%s, name=%s, type=%s", room_id, room.name, type(room).__name__)
 
         return self._rooms
