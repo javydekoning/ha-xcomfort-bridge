@@ -27,6 +27,6 @@
     "pycryptodome==3.23.0"
   ],
   "ssdp": [],
-  "version": "0.6.0-beta7",
+  "version": "0.6.0-beta8",
   "zeroconf": []
 }
