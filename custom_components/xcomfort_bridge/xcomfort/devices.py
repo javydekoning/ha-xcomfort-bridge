@@ -401,8 +401,7 @@ class Rocker(BridgeDevice):
         so this method can be called multiple times.
 
         Search strategy:
-        1. Try device_id + 1 (pattern observed: Rocker=14, Sensor=15)
-        2. Try same comp_id as fallback
+        - Find sensor with the same comp_id
         """
         if self._sensor_device is not None:
             return  # Already found and subscribed
@@ -414,28 +413,6 @@ class Rocker(BridgeDevice):
             self.comp_id,
         )
 
-        # Strategy 1: Try device_id + 1 (most common pattern)
-        sensor_device_id = self.device_id + 1
-        candidate = self.bridge._devices.get(sensor_device_id)  # noqa: SLF001
-
-        if candidate is not None:
-            _LOGGER.info(
-                "Rocker %s found companion sensor device by device_id+1: %s (device_id=%s, type=%s, has_comp_id=%s)",
-                self.name,
-                candidate.name,
-                candidate.device_id,
-                type(candidate).__name__,
-                hasattr(candidate, "comp_id"),
-            )
-            if hasattr(candidate, "comp_id"):
-                _LOGGER.debug("  -> Sensor device comp_id: %s", candidate.comp_id)
-
-            self._sensor_device = candidate
-            # Subscribe to its state updates
-            candidate.state.subscribe(lambda state: self._on_sensor_device_update(state))
-            return
-
-        # Strategy 2: Look for other devices with the same comp_id
         for device in self.bridge._devices.values():  # noqa: SLF001
             if device.device_id != self.device_id and hasattr(device, "comp_id") and device.comp_id == self.comp_id:
                 # Found a companion device in the same component
@@ -454,7 +431,7 @@ class Rocker(BridgeDevice):
         _LOGGER.debug(
             "Rocker %s: companion sensor device not found yet. Available devices: %s",
             self.name,
-            list(self.bridge.devices.keys()),
+            list(self.bridge._devices.keys()),
         )
 
     def _on_sensor_device_update(self, state) -> None:
