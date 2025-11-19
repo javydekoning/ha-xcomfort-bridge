@@ -431,7 +431,7 @@ class Rocker(BridgeDevice):
         _LOGGER.debug(
             "Rocker %s: companion sensor device not found yet. Available devices: %s",
             self.name,
-            list(self.bridge._devices.keys()),
+            list(self.bridge._devices.keys()),  # noqa: SLF001
         )
 
     def _on_sensor_device_update(self, state) -> None:
