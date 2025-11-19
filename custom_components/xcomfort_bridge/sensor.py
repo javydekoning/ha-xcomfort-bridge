@@ -31,7 +31,7 @@ from .const import DOMAIN
 from .hub import XComfortHub
 from .xcomfort.bridge import Room
 from .xcomfort.constants import ComponentTypes
-from .xcomfort.devices import RcTouch, Rocker
+from .xcomfort.devices import Heater, RcTouch, Rocker
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -67,21 +67,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         XComfortHubSensor(hub, entry, "home_scenes_count", "Scenes Count", "mdi:script-text-outline"),
     ]
 
-    # Add bridge state sensors
-    _LOGGER.debug("Creating bridge state sensors for bridge %s (hub_id: %s)", hub.bridge_name or "Unknown", hub.hub_id)
-    hub_sensors.append(XComfortBridgeHeatingOnSensor(hub))
-    hub_sensors.append(XComfortBridgeLightsOnSensor(hub))
-    hub_sensors.append(XComfortBridgeLoadsOnSensor(hub))
-    hub_sensors.append(XComfortBridgeWindowsOpenSensor(hub))
-    hub_sensors.append(XComfortBridgeDoorsOpenSensor(hub))
-    hub_sensors.append(XComfortBridgePresenceSensor(hub))
-    hub_sensors.append(XComfortBridgeShadesClosedSensor(hub))
-    hub_sensors.append(XComfortBridgeWaterGuardSensor(hub))
-    hub_sensors.append(XComfortBridgeCoolingOnSensor(hub))
-    hub_sensors.append(XComfortBridgePowerSensor(hub))
-    hub_sensors.append(XComfortBridgeOutsideTemperatureSensor(hub))
-    _LOGGER.debug("Created %d bridge state sensors for bridge %s", 11, hub.bridge_name or hub.hub_id)
-
     async_add_entities(hub_sensors)
 
     async def _wait_for_hub_then_setup():
@@ -100,6 +85,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
                 _LOGGER.debug("Adding temperature and humidity sensors for RcTouch device %s", device.name)
                 sensors.append(XComfortRcTouchTemperatureSensor(hub, device))
                 sensors.append(XComfortRcTouchHumiditySensor(hub, device))
+            elif isinstance(device, Heater):
+                _LOGGER.debug("Adding temperature, heating demand, and power sensors for Heater device %s", device.name)
+                sensors.append(XComfortHeaterTemperatureSensor(hub, device))
+                sensors.append(XComfortHeaterHeatingDemandSensor(hub, device))
+                sensors.append(XComfortHeaterPowerSensor(hub, device))
             elif isinstance(device, Rocker) and device.has_sensors:
                 comp = device.bridge._comps.get(device.comp_id)  # noqa: SLF001
                 if not comp:
@@ -412,6 +402,145 @@ class XComfortRcTouchHumiditySensor(SensorEntity):
         return self._state and self._state.humidity
 
 
+class XComfortHeaterTemperatureSensor(SensorEntity):
+    """Entity class for xComfort Heater temperature sensors."""
+
+    def __init__(self, hub: XComfortHub, device: Heater):
+        """Initialize the temperature sensor entity.
+
+        Args:
+            hub: XComfortHub instance
+            device: Heater device instance
+
+        """
+        self.entity_description = SensorEntityDescription(
+            key="temperature",
+            device_class=SensorDeviceClass.TEMPERATURE,
+            native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+            state_class=SensorStateClass.MEASUREMENT,
+            name="Temperature",
+        )
+        self._device = device
+        self._attr_name = f"{self._device.name} Temperature"
+        self._attr_unique_id = f"temperature_{self._device.name}_{self._device.device_id}"
+
+        self.hub = hub
+        self._state = None
+        self._device.state.subscribe(lambda state: self._state_change(state))
+
+        # Create device info for the heater
+        device_id = f"heater_{DOMAIN}_{hub.identifier}-{device.device_id}"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, device_id)},
+            name=device.name,
+            manufacturer="Eaton",
+            model="xComfort Heating Actuator",
+            via_device=(DOMAIN, hub.hub_id),
+        )
+
+    def _state_change(self, state):
+        should_update = self._state is not None
+
+        self._state = state
+        if should_update:
+            self.async_write_ha_state()
+
+    @property
+    def native_value(self):
+        """Return the current value."""
+        return self._state and self._state.device_temperature
+
+
+class XComfortHeaterHeatingDemandSensor(SensorEntity):
+    """Entity class for xComfort Heater heating demand sensors."""
+
+    def __init__(self, hub: XComfortHub, device: Heater):
+        """Initialize the heating demand sensor entity.
+
+        Args:
+            hub: XComfortHub instance
+            device: Heater device instance
+
+        """
+        self.entity_description = SensorEntityDescription(
+            key="heating_demand",
+            native_unit_of_measurement=PERCENTAGE,
+            state_class=SensorStateClass.MEASUREMENT,
+            name="Heating Demand",
+        )
+        self._device = device
+        self._attr_name = f"{self._device.name} Heating Demand"
+        self._attr_unique_id = f"heating_demand_{self._device.name}_{self._device.device_id}"
+        self._attr_icon = "mdi:radiator"
+
+        self.hub = hub
+        self._state = None
+        self._device.state.subscribe(lambda state: self._state_change(state))
+
+        # Link to the same device as the temperature sensor
+        device_id = f"heater_{DOMAIN}_{hub.identifier}-{device.device_id}"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, device_id)},
+        )
+
+    def _state_change(self, state):
+        should_update = self._state is not None
+
+        self._state = state
+        if should_update:
+            self.async_write_ha_state()
+
+    @property
+    def native_value(self):
+        """Return the current value."""
+        return self._state and self._state.heating_demand
+
+
+class XComfortHeaterPowerSensor(SensorEntity):
+    """Entity class for xComfort Heater power sensors."""
+
+    def __init__(self, hub: XComfortHub, device: Heater):
+        """Initialize the power sensor entity.
+
+        Args:
+            hub: XComfortHub instance
+            device: Heater device instance
+
+        """
+        self.entity_description = SensorEntityDescription(
+            key="power",
+            device_class=SensorDeviceClass.POWER,
+            native_unit_of_measurement=UnitOfPower.WATT,
+            state_class=SensorStateClass.MEASUREMENT,
+            name="Power",
+        )
+        self._device = device
+        self._attr_name = f"{self._device.name} Power"
+        self._attr_unique_id = f"power_{self._device.name}_{self._device.device_id}"
+
+        self.hub = hub
+        self._state = None
+        self._device.state.subscribe(lambda state: self._state_change(state))
+
+        # Link to the same device as the temperature sensor
+        device_id = f"heater_{DOMAIN}_{hub.identifier}-{device.device_id}"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, device_id)},
+        )
+
+    def _state_change(self, state):
+        should_update = self._state is not None
+
+        self._state = state
+        if should_update:
+            self.async_write_ha_state()
+
+    @property
+    def native_value(self):
+        """Return the current value."""
+        return self._state and self._state.power
+
+
 class XComfortRockerTemperatureSensor(SensorEntity):
     """Entity class for xComfort Rocker multisensor temperature sensors."""
 
@@ -600,101 +729,6 @@ class XComfortRoomSensorBase(SensorEntity):
         return value
 
 
-class XComfortBridgeSensorBase(SensorEntity):
-    """Base class for xComfort bridge sensors."""
-
-    _attr_has_entity_name = True
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
-
-    def __init__(
-        self,
-        hub: XComfortHub,
-        key: str,
-        name: str,
-        icon: str,
-        state_key: str,
-        device_class: SensorDeviceClass | None = None,
-        unit: str | None = None,
-        state_class: SensorStateClass | None = None,
-        value_fn=None,
-    ):
-        """Initialize the bridge sensor entity.
-
-        Args:
-            hub: XComfortHub instance
-            key: Sensor key
-            name: Sensor name
-            icon: MDI icon
-            state_key: Key to read from bridge state
-            device_class: Sensor device class (optional)
-            unit: Unit of measurement (optional)
-            state_class: State class (optional)
-            value_fn: Custom value function (optional)
-
-        """
-        if device_class or unit or state_class:
-            self.entity_description = SensorEntityDescription(
-                key=key,
-                device_class=device_class,
-                native_unit_of_measurement=unit,
-                state_class=state_class,
-                name=name,
-            )
-        self.hub = hub
-        self._state_key = state_key
-        self._value_fn = value_fn
-        self._attr_name = name
-        self._attr_unique_id = f"{hub.hub_id}_{key}"
-        self._attr_icon = icon
-        self._state = None
-        self._bridge_id = hub.hub_id
-
-        # Subscribe to bridge state updates
-        hub.bridge.bridge_state.subscribe(lambda state: self._state_change(state))
-
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, hub.hub_id)},
-        )
-
-    async def async_added_to_hass(self):
-        """Run when entity is added to hass."""
-        # Get current bridge state if available
-        current_state = self.hub.bridge.bridge_state.value
-        if current_state is not None:
-            _LOGGER.debug(
-                "Bridge sensor %s initializing with existing state for bridge %s", self._attr_name, self._bridge_id
-            )
-            self._state = current_state
-            self.async_write_ha_state()
-
-    def _state_change(self, state):
-        """Handle state changes from the bridge."""
-        if state is not None:
-            _LOGGER.debug(
-                "Bridge sensor %s (%s) received state update for bridge %s",
-                self._attr_name,
-                self._state_key,
-                self._bridge_id,
-            )
-
-        should_update = self._state is not None
-        self._state = state
-        if should_update:
-            self.async_write_ha_state()
-
-    @property
-    def native_value(self):
-        """Return the current value."""
-        if self._state is None:
-            _LOGGER.debug("Bridge sensor %s has no state yet (bridge %s)", self._attr_name, self._bridge_id)
-            return None
-
-        value = self._state.get(self._state_key)
-        if self._value_fn:
-            return self._value_fn(value)
-        return value
-
-
 # Room sensor factory functions
 def XComfortRoomLightsOnSensor(hub: XComfortHub, room: Room):
     """Create a room lights on sensor."""
@@ -773,84 +807,4 @@ def XComfortRoomValveSensor(hub: XComfortHub, room: Room):
         "valve",
         unit=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
-    )
-
-
-# Bridge sensor factory functions
-def XComfortBridgeHeatingOnSensor(hub: XComfortHub):
-    """Create a bridge heating on sensor."""
-    return XComfortBridgeSensorBase(hub, "heating_on", "Heating On", "mdi:radiator", "heatingOn")
-
-
-def XComfortBridgeLightsOnSensor(hub: XComfortHub):
-    """Create a bridge lights on sensor."""
-    return XComfortBridgeSensorBase(hub, "lights_on", "Lights On", "mdi:lightbulb-on", "lightsOn")
-
-
-def XComfortBridgeLoadsOnSensor(hub: XComfortHub):
-    """Create a bridge loads on sensor."""
-    return XComfortBridgeSensorBase(hub, "loads_on", "Loads On", "mdi:power-socket", "loadsOn")
-
-
-def XComfortBridgeWindowsOpenSensor(hub: XComfortHub):
-    """Create a bridge windows open sensor."""
-    return XComfortBridgeSensorBase(hub, "windows_open", "Windows Open", "mdi:window-open-variant", "windowsOpen")
-
-
-def XComfortBridgeDoorsOpenSensor(hub: XComfortHub):
-    """Create a bridge doors open sensor."""
-    return XComfortBridgeSensorBase(hub, "doors_open", "Doors Open", "mdi:door-open", "doorsOpen")
-
-
-def XComfortBridgePresenceSensor(hub: XComfortHub):
-    """Create a bridge presence sensor."""
-    return XComfortBridgeSensorBase(hub, "presence", "Presence", "mdi:home-account", "presence")
-
-
-def XComfortBridgeShadesClosedSensor(hub: XComfortHub):
-    """Create a bridge shades closed sensor."""
-    return XComfortBridgeSensorBase(hub, "shades_closed", "Shades Closed", "mdi:window-shutter", "shadsClosed")
-
-
-def XComfortBridgeWaterGuardSensor(hub: XComfortHub):
-    """Create a bridge water guard sensor."""
-    return XComfortBridgeSensorBase(hub, "water_guard_off", "Water Guard Off", "mdi:water-off", "wgWaterOff")
-
-
-def XComfortBridgeCoolingOnSensor(hub: XComfortHub):
-    """Create a bridge cooling on sensor."""
-    return XComfortBridgeSensorBase(hub, "cooling_on", "Cooling On", "mdi:snowflake", "coolingOn")
-
-
-def XComfortBridgePowerSensor(hub: XComfortHub):
-    """Create a bridge power sensor."""
-    return XComfortBridgeSensorBase(
-        hub,
-        "power",
-        "Power",
-        None,
-        "power",
-        device_class=SensorDeviceClass.POWER,
-        unit=UnitOfPower.WATT,
-        state_class=SensorStateClass.MEASUREMENT,
-    )
-
-
-def XComfortBridgeOutsideTemperatureSensor(hub: XComfortHub):
-    """Create a bridge outside temperature sensor."""
-
-    def filter_invalid_temp(value):
-        """Filter out -100.0 (sensor not connected)."""
-        return None if value == -100.0 else value
-
-    return XComfortBridgeSensorBase(
-        hub,
-        "outside_temperature",
-        "Outside Temperature",
-        None,
-        "tempOutside",
-        device_class=SensorDeviceClass.TEMPERATURE,
-        unit=UnitOfTemperature.CELSIUS,
-        state_class=SensorStateClass.MEASUREMENT,
-        value_fn=filter_invalid_temp,
     )
