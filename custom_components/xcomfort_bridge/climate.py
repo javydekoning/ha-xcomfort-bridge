@@ -410,14 +410,14 @@ class HASSXComfortRoomClimate(ClimateEntity):
     @property
     def max_temp(self):
         """Return the maximum temperature."""
-        if self._state is None:
+        if self._state is None or self.rctpreset == ClimateMode.Unknown:
             return 40.0
         return self._room.bridge.rctsetpointallowedvalues[self.rctpreset].Max
 
     @property
     def min_temp(self):
         """Return the minimum temperature."""
-        if self._state is None:
+        if self._state is None or self.rctpreset == ClimateMode.Unknown:
             return 5.0
         return self._room.bridge.rctsetpointallowedvalues[self.rctpreset].Min
 
@@ -434,6 +434,8 @@ class HASSXComfortRoomClimate(ClimateEntity):
     @property
     def preset_mode(self):
         """Return the current preset mode."""
+        if self.rctpreset == ClimateMode.Unknown:
+            return None
         if self.rctpreset == ClimateMode.FrostProtection:
             return "Frost Protection"
         if self.rctpreset == ClimateMode.Eco:

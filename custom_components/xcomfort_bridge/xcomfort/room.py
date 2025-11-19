@@ -76,9 +76,21 @@ class Room:
 
         mode = None
         if "currentMode" in payload:  # When handling from _SET_ALL_DATA
-            mode = ClimateMode(payload.get("currentMode", None))
+            mode_value = payload.get("currentMode")
+            if mode_value is not None:
+                try:
+                    mode = ClimateMode(mode_value)
+                except ValueError:
+                    _LOGGER.warning("Room %s: Invalid currentMode value: %s", self.name, mode_value)
+                    mode = ClimateMode.Unknown
         if "mode" in payload:  # When handling from _SET_STATE_INFO
-            mode = ClimateMode(payload.get("mode", None))
+            mode_value = payload.get("mode")
+            if mode_value is not None:
+                try:
+                    mode = ClimateMode(mode_value)
+                except ValueError:
+                    _LOGGER.warning("Room %s: Invalid mode value: %s", self.name, mode_value)
+                    mode = ClimateMode.Unknown
 
         # When handling from _SET_ALL_DATA, we get the setpoints for each mode/preset
         # Store these for later use

@@ -151,8 +151,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
                         sensors.append(XComfortRoomHumiditySensor(hub, room))
 
                     # Add currentMode sensor if temperatureOnly is False
-                    if raw.get("temperatureOnly") is False and "currentMode" in raw:
-                        sensors.append(XComfortRoomCurrentModeSensor(hub, room))
+                    if raw.get("temperatureOnly") is False:
+                        if "currentMode" in raw:
+                            sensors.append(XComfortRoomCurrentModeSensor(hub, room))
+                        # Add valve sensor for heating demand (will update when valve data arrives)
+                        sensors.append(XComfortRoomValveSensor(hub, room))
 
         _LOGGER.debug("Added %s sensor entities", len(sensors))
         async_add_entities(sensors)
@@ -434,11 +437,9 @@ class XComfortRockerTemperatureSensor(SensorEntity):
         self._attr_unique_id = f"temperature_rocker_{device.device_id}"
 
         # Link to the same device as the event entity
-        # For multi-channel components, use component-based device identifier
-        if comp and _is_multi_channel_component(comp.comp_type):
-            device_identifier = f"event_{DOMAIN}_comp_{device.comp_id}"
-        else:
-            device_identifier = f"event_{DOMAIN}_{device.device_id}"
+        # All pushbutton components now use component-based device identifier
+        # xComfort Component = Home Assistant Device
+        device_identifier = f"event_{DOMAIN}_comp_{device.comp_id}"
 
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, device_identifier)},
@@ -491,11 +492,9 @@ class XComfortRockerHumiditySensor(SensorEntity):
         self._attr_unique_id = f"humidity_rocker_{device.device_id}"
 
         # Link to the same device as the event entity
-        # For multi-channel components, use component-based device identifier
-        if comp and _is_multi_channel_component(comp.comp_type):
-            device_identifier = f"event_{DOMAIN}_comp_{device.comp_id}"
-        else:
-            device_identifier = f"event_{DOMAIN}_{device.device_id}"
+        # All pushbutton components now use component-based device identifier
+        # xComfort Component = Home Assistant Device
+        device_identifier = f"event_{DOMAIN}_comp_{device.comp_id}"
 
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, device_identifier)},
@@ -748,6 +747,8 @@ def XComfortRoomCurrentModeSensor(hub: XComfortHub, room: Room):
     def map_mode(value, raw):
         """Map mode value to friendly name."""
         current_mode = value or raw.get("mode")
+        if current_mode == 0:
+            return "Unknown"
         if current_mode == 1:
             return "Frost Protection"
         if current_mode == 2:
@@ -758,6 +759,20 @@ def XComfortRoomCurrentModeSensor(hub: XComfortHub, room: Room):
 
     return XComfortRoomSensorBase(
         hub, room, "current_mode", "Current Mode", "mdi:thermostat", "currentMode", state_class=None, value_fn=map_mode
+    )
+
+
+def XComfortRoomValveSensor(hub: XComfortHub, room: Room):
+    """Create a room valve/heating demand sensor."""
+    return XComfortRoomSensorBase(
+        hub,
+        room,
+        "heating_demand",
+        "Heating Demand",
+        "mdi:radiator",
+        "valve",
+        unit=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
     )
 
 

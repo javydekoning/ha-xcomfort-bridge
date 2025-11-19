@@ -49,6 +49,12 @@ logger:
     xcomfort: debug
 ```
 
+6. Run the linter before opening PR!
+
+```bash
+uvx ruff check --config .github/linters/.ruff.toml --fix
+```
+
 ## Using events in automations
 
 This integration triggers events on button presses for push buttons, virtual Rc Touch buttons or remotes. There are 2 types:

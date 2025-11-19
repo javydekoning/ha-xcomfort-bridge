@@ -125,11 +125,12 @@ class ShadeState(DeviceState):
 class BridgeDevice:
     """Base bridge device class."""
 
-    def __init__(self, bridge, device_id, name):
+    def __init__(self, bridge, device_id, name, comp_id=None):
         """Initialize bridge device."""
         self.bridge = bridge
         self.device_id = device_id
         self.name = name
+        self.comp_id = comp_id
 
         self.state = rx.subject.BehaviorSubject(None)
 
@@ -141,9 +142,9 @@ class BridgeDevice:
 class Light(BridgeDevice):
     """Light device class."""
 
-    def __init__(self, bridge, device_id, name, dimmable):
+    def __init__(self, bridge, device_id, name, dimmable, comp_id=None):
         """Initialize light device."""
-        BridgeDevice.__init__(self, bridge, device_id, name)
+        BridgeDevice.__init__(self, bridge, device_id, name, comp_id)
 
         self.dimmable = dimmable
 
@@ -215,8 +216,7 @@ class RcTouch(BridgeDevice):
                     humidity = float(info["value"])
 
         if temperature is not None and humidity is not None:
-            _LOGGER.debug("RcTouch %s state update: temp=%s°C, humidity=%s%%",
-                         self.name, temperature, humidity)
+            _LOGGER.debug("RcTouch %s state update: temp=%s°C, humidity=%s%%", self.name, temperature, humidity)
             self.state.on_next(RcTouchState(temperature, humidity, payload))
 
     def handle_virtual_rocker_state(self, payload):
@@ -267,9 +267,13 @@ class Shade(BridgeDevice):
     def handle_state(self, payload):
         """Handle shade state updates."""
         self.__shade_state.update_from_partial_state_update(payload)
-        _LOGGER.debug("Shade %s state update: position=%s, current_state=%s, safety=%s",
-                     self.name, self.__shade_state.position,
-                     self.__shade_state.current_state, self.__shade_state.is_safety_enabled)
+        _LOGGER.debug(
+            "Shade %s state update: position=%s, current_state=%s, safety=%s",
+            self.name,
+            self.__shade_state.position,
+            self.__shade_state.current_state,
+            self.__shade_state.is_safety_enabled,
+        )
         self.state.on_next(self.__shade_state)
 
     async def send_state(self, state, **kw):
@@ -333,8 +337,7 @@ class DoorWindowSensor(BridgeDevice):
         if (state := payload.get("curstate")) is not None:
             self.is_closed = state == 1
             self.is_open = not self.is_closed
-            _LOGGER.debug("Door/Window sensor %s state update: %s",
-                         self.name, "CLOSED" if self.is_closed else "OPEN")
+            _LOGGER.debug("Door/Window sensor %s state update: %s", self.name, "CLOSED" if self.is_closed else "OPEN")
 
         self.state.on_next(self.is_closed)
 
@@ -343,10 +346,8 @@ class WindowSensor(DoorWindowSensor):
     """Window sensor device class."""
 
 
-
 class DoorSensor(DoorWindowSensor):
     """Door sensor device class."""
-
 
 
 class Rocker(BridgeDevice):
@@ -406,18 +407,27 @@ class Rocker(BridgeDevice):
         if self._sensor_device is not None:
             return  # Already found and subscribed
 
-        _LOGGER.debug("Rocker %s (device_id=%s, comp_id=%s) searching for companion sensor device...",
-                     self.name, self.device_id, self.comp_id)
+        _LOGGER.debug(
+            "Rocker %s (device_id=%s, comp_id=%s) searching for companion sensor device...",
+            self.name,
+            self.device_id,
+            self.comp_id,
+        )
 
         # Strategy 1: Try device_id + 1 (most common pattern)
         sensor_device_id = self.device_id + 1
         candidate = self.bridge._devices.get(sensor_device_id)  # noqa: SLF001
 
         if candidate is not None:
-            _LOGGER.info("Rocker %s found companion sensor device by device_id+1: %s (device_id=%s, type=%s, has_comp_id=%s)",
-                        self.name, candidate.name, candidate.device_id,
-                        type(candidate).__name__, hasattr(candidate, 'comp_id'))
-            if hasattr(candidate, 'comp_id'):
+            _LOGGER.info(
+                "Rocker %s found companion sensor device by device_id+1: %s (device_id=%s, type=%s, has_comp_id=%s)",
+                self.name,
+                candidate.name,
+                candidate.device_id,
+                type(candidate).__name__,
+                hasattr(candidate, "comp_id"),
+            )
+            if hasattr(candidate, "comp_id"):
                 _LOGGER.debug("  -> Sensor device comp_id: %s", candidate.comp_id)
 
             self._sensor_device = candidate
@@ -427,33 +437,41 @@ class Rocker(BridgeDevice):
 
         # Strategy 2: Look for other devices with the same comp_id
         for device in self.bridge._devices.values():  # noqa: SLF001
-            if (device.device_id != self.device_id and
-                hasattr(device, 'comp_id') and
-                device.comp_id == self.comp_id):
+            if device.device_id != self.device_id and hasattr(device, "comp_id") and device.comp_id == self.comp_id:
                 # Found a companion device in the same component
-                _LOGGER.info("Rocker %s found companion sensor device by comp_id: %s (device_id=%s)",
-                            self.name, device.name, device.device_id)
+                _LOGGER.info(
+                    "Rocker %s found companion sensor device by comp_id: %s (device_id=%s)",
+                    self.name,
+                    device.name,
+                    device.device_id,
+                )
                 self._sensor_device = device
                 # Subscribe to its state updates
                 device.state.subscribe(lambda state: self._on_sensor_device_update(state))
                 return
 
         # Not found yet - will retry on first state update
-        _LOGGER.debug("Rocker %s: companion sensor device not found yet. Available devices: %s",
-                     self.name, list(self.bridge._devices.keys()))  # noqa: SLF001
+        _LOGGER.debug(
+            "Rocker %s: companion sensor device not found yet. Available devices: %s",
+            self.name,
+            list(self.bridge.devices.keys()),
+        )
 
     def _on_sensor_device_update(self, state) -> None:
         """Handle sensor device state updates."""
-        _LOGGER.debug("Rocker %s received sensor device update: state=%s, has_raw=%s",
-                     self.name, type(state).__name__, hasattr(state, 'raw') if state else False)
+        _LOGGER.debug(
+            "Rocker %s received sensor device update: state=%s, has_raw=%s",
+            self.name,
+            type(state).__name__,
+            hasattr(state, "raw") if state else False,
+        )
 
         if state is None:
             return
 
         # Handle different state types
-        if not hasattr(state, 'raw'):
-            _LOGGER.debug("Rocker %s sensor state has no 'raw' attribute, type is %s",
-                         self.name, type(state).__name__)
+        if not hasattr(state, "raw"):
+            _LOGGER.debug("Rocker %s sensor state has no 'raw' attribute, type is %s", self.name, type(state).__name__)
             return
 
         payload = state.raw
@@ -469,8 +487,7 @@ class Rocker(BridgeDevice):
                 text = info.get("text")
                 value_str = info.get("value")
 
-                _LOGGER.debug("Rocker %s checking info item: text=%s, value=%s",
-                             self.name, text, value_str)
+                _LOGGER.debug("Rocker %s checking info item: text=%s, value=%s", self.name, text, value_str)
 
                 if not value_str:
                     continue
@@ -494,12 +511,12 @@ class Rocker(BridgeDevice):
             self.temperature = temperature
             self.humidity = humidity
 
-            _LOGGER.info("Rocker %s sensor values updated: temp=%s°C, humidity=%s%%",
-                        self.name, self.temperature, self.humidity)
+            _LOGGER.info(
+                "Rocker %s sensor values updated: temp=%s°C, humidity=%s%%", self.name, self.temperature, self.humidity
+            )
 
             if self.temperature is not None or self.humidity is not None:
-                self.state.on_next(RockerSensorState(self.is_on, self.temperature,
-                                                     self.humidity, self.payload))
+                self.state.on_next(RockerSensorState(self.is_on, self.temperature, self.humidity, self.payload))
         else:
             _LOGGER.debug("Rocker %s sensor values unchanged", self.name)
 
@@ -533,8 +550,7 @@ class Rocker(BridgeDevice):
         if comp and comp.state.value:
             comp_payload = comp.state.value.raw
             if "info" in comp_payload:
-                _LOGGER.debug("Rocker %s component info update: %s",
-                            self.name, comp_payload["info"])
+                _LOGGER.debug("Rocker %s component info update: %s", self.name, comp_payload["info"])
 
     def handle_state(self, payload, broadcast: bool = True) -> None:
         """Handle rocker state updates."""
@@ -547,13 +563,16 @@ class Rocker(BridgeDevice):
             if self._sensor_device is None:
                 self._find_and_subscribe_sensor_device()
 
-            _LOGGER.debug("Rocker %s state update: %s, temp=%s°C, humidity=%s%%",
-                        self.name, "ON" if self.is_on else "OFF",
-                        self.temperature, self.humidity)
+            _LOGGER.debug(
+                "Rocker %s state update: %s, temp=%s°C, humidity=%s%%",
+                self.name,
+                "ON" if self.is_on else "OFF",
+                self.temperature,
+                self.humidity,
+            )
             if broadcast:
                 # Always broadcast with RockerSensorState for multisensor rockers
-                self.state.on_next(RockerSensorState(self.is_on, self.temperature,
-                                                     self.humidity, payload))
+                self.state.on_next(RockerSensorState(self.is_on, self.temperature, self.humidity, payload))
         else:
             _LOGGER.debug("Rocker %s state update: %s", self.name, "ON" if self.is_on else "OFF")
             if broadcast:

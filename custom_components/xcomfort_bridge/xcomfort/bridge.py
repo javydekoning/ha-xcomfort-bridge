@@ -55,6 +55,7 @@ class Bridge:
 
         # Values determined from using setpoint slider in app.
         self.rctsetpointallowedvalues = {
+            ClimateMode.Unknown: RctModeRange(5.0, 40.0),
             ClimateMode.FrostProtection: RctModeRange(5.0, 20.0),
             ClimateMode.Eco: RctModeRange(10.0, 30.0),
             ClimateMode.Comfort: RctModeRange(18.0, 40.0),
@@ -81,6 +82,21 @@ class Bridge:
         self.logger = lambda x: _LOGGER.warning(x)
 
         _LOGGER.info("Initialized xComfort bridge for %s", ip_address)
+
+    @property
+    def comps(self):
+        """Get components dictionary."""
+        return self._comps
+
+    @property
+    def devices(self):
+        """Get devices dictionary."""
+        return self._devices
+
+    @property
+    def rooms(self):
+        """Get rooms dictionary."""
+        return self._rooms
 
     async def run(self):
         """Run the bridge main loop."""
@@ -135,6 +151,28 @@ class Bridge:
         """Add a device to the bridge."""
         self._devices[device.device_id] = device
         _LOGGER.debug("Added device: %s (id: %s, type: %s)", device.name, device.device_id, type(device).__name__)
+
+        # Log component-to-device relationship if it exists
+        if hasattr(device, "comp_id"):
+            comp = self._comps.get(device.comp_id)
+            if comp:
+                _LOGGER.debug(
+                    "Component-Device relationship: Comp(id=%s, name='%s', type=%s) -> Device(id=%s, name='%s', type=%s)",
+                    comp.comp_id,
+                    comp.name,
+                    comp.comp_type,
+                    device.device_id,
+                    device.name,
+                    type(device).__name__,
+                )
+            else:
+                _LOGGER.debug(
+                    "Device %s (id: %s, type: %s) has comp_id=%s but component not found yet",
+                    device.name,
+                    device.device_id,
+                    type(device).__name__,
+                    device.comp_id,
+                )
 
     def _add_room(self, room):
         """Add a room to the bridge."""
@@ -234,7 +272,30 @@ class Bridge:
         dev_type = payload["devType"]
         comp_id = payload["compId"]
 
-        _LOGGER.debug("Creating device from payload: id=%s, name=%s, devType=%s", device_id, name, dev_type)
+        _LOGGER.debug(
+            "Creating device from payload: id=%s, name=%s, devType=%s, compId=%s", device_id, name, dev_type, comp_id
+        )
+
+        # Log component relationship from payload (before device creation)
+        comp = self._comps.get(comp_id)
+        if comp:
+            _LOGGER.debug(
+                "Device creation - Component relationship: Comp(id=%s, name='%s', type=%s) -> Device(id=%s, name='%s', devType=%s)",
+                comp.comp_id,
+                comp.name,
+                comp.comp_type,
+                device_id,
+                name,
+                dev_type,
+            )
+        else:
+            _LOGGER.debug(
+                "Device creation - comp_id=%s not found yet for Device(id=%s, name='%s', devType=%s)",
+                comp_id,
+                device_id,
+                name,
+                dev_type,
+            )
 
         if dev_type in (DeviceTypes.ACTUATOR_SWITCH, DeviceTypes.ACTUATOR_DIMM):
             if payload.get("usage") == 0:
@@ -242,7 +303,7 @@ class Bridge:
                 # and not as a light.
                 dimmable = payload["dimmable"]
                 _LOGGER.debug("Creating Light device (dimmable=%s)", dimmable)
-                return Light(self, device_id, name, dimmable)
+                return Light(self, device_id, name, dimmable, comp_id)
 
         elif dev_type == DeviceTypes.SHADING_ACTUATOR:
             _LOGGER.debug("Creating Shade device")
@@ -305,7 +366,7 @@ class Bridge:
             return Rocker(self, device_id, name, comp_id, payload)
 
         _LOGGER.debug("Creating generic BridgeDevice (unrecognized device type)")
-        return BridgeDevice(self, device_id, name)
+        return BridgeDevice(self, device_id, name, comp_id)
 
     def _create_room_from_payload(self, payload):
         """Create a room from payload data."""
@@ -371,6 +432,31 @@ class Bridge:
             _LOGGER.info(
                 "Loaded %d devices, %d components, %d rooms", len(self._devices), len(self._comps), len(self._rooms)
             )
+
+            # Log all component-device relationships after initialization
+            _LOGGER.debug("=== Component-Device Relationships ===")
+            for device in self._devices.values():
+                if hasattr(device, "comp_id"):
+                    comp = self._comps.get(device.comp_id)
+                    if comp:
+                        _LOGGER.debug(
+                            "Comp(id=%s, name='%s', type=%s) -> Device(id=%s, name='%s', type=%s)",
+                            comp.comp_id,
+                            comp.name,
+                            comp.comp_type,
+                            device.device_id,
+                            device.name,
+                            type(device).__name__,
+                        )
+                    else:
+                        _LOGGER.warning(
+                            "Device(id=%s, name='%s', type=%s) references comp_id=%s which doesn't exist",
+                            device.device_id,
+                            device.name,
+                            type(device).__name__,
+                            device.comp_id,
+                        )
+            _LOGGER.debug("=== End Component-Device Relationships ===")
 
         if "devices" in payload:
             _LOGGER.debug("Processing %d devices from SET_ALL_DATA", len(payload["devices"]))

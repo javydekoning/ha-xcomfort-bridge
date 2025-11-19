@@ -6,6 +6,7 @@ from enum import Enum, IntEnum
 class ClimateMode(Enum):
     """Climate mode enumeration."""
 
+    Unknown = 0
     FrostProtection = 1
     Eco = 2
     Comfort = 3
