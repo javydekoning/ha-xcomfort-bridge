@@ -6,15 +6,6 @@ from this single module while the implementation is split across multiple files.
 """
 
 # Re-export all state classes
-from .device_states import (
-    DeviceState,
-    HeaterState,
-    LightState,
-    RcTouchState,
-    RockerSensorState,
-    ShadeState,
-)
-
 # Re-export base device class
 from .device_base import BridgeDevice
 
@@ -24,24 +15,32 @@ from .device_light import Light
 from .device_rocker import Rocker
 from .device_sensors import DoorSensor, DoorWindowSensor, WindowSensor
 from .device_shade import Shade
+from .device_states import (
+    DeviceState,
+    HeaterState,
+    LightState,
+    RcTouchState,
+    RockerSensorState,
+    ShadeState,
+)
 
 __all__ = [
-    # State classes
-    "DeviceState",
-    "LightState",
-    "RcTouchState",
-    "RockerSensorState",
-    "HeaterState",
-    "ShadeState",
     # Base class
     "BridgeDevice",
+    # State classes
+    "DeviceState",
+    "DoorSensor",
+    "DoorWindowSensor",
+    "Heater",
+    "HeaterState",
     # Device classes
     "Light",
+    "LightState",
     "RcTouch",
-    "Heater",
-    "Shade",
-    "DoorWindowSensor",
-    "WindowSensor",
-    "DoorSensor",
+    "RcTouchState",
     "Rocker",
+    "RockerSensorState",
+    "Shade",
+    "ShadeState",
+    "WindowSensor",
 ]
