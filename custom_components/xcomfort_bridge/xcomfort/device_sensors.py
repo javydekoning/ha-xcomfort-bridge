@@ -36,3 +36,5 @@ class WindowSensor(DoorWindowSensor):
 class DoorSensor(DoorWindowSensor):
     """Door sensor device class."""
 
+
+

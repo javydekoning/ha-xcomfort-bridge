@@ -220,3 +220,5 @@ class Rocker(BridgeDevice):
             return f'Rocker({self.device_id}, "{self.name}", is_on: {self.is_on}, temp: {self.temperature}, humidity: {self.humidity})'
         return f'Rocker({self.device_id}, "{self.name}", is_on: {self.is_on} payload: {self.payload})'
 
+
+
