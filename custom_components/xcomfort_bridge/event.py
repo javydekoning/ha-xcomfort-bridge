@@ -195,6 +195,7 @@ class XComfortEvent(EventEntity):
 
         self._attr_unique_id = f"event_{DOMAIN}_{device.device_id}"
         self._device = device
+        self._has_initialized = False
 
         # xComfort Component = Home Assistant Device
         # Always create/reference a device based on the component
@@ -215,6 +216,11 @@ class XComfortEvent(EventEntity):
         """Handle the button event."""
 
         if state is None:
+            return
+
+        # Skip the very first state after HA restart
+        if not self._has_initialized:
+            self._has_initialized = True
             return
 
         # For momentary rockers, extract the actual button state
