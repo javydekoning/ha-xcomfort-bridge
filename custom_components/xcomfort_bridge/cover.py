@@ -1,8 +1,6 @@
 """Support for xComfort Bridge cover shades."""
 import logging
 
-from xcomfort.devices import Shade
-
 from homeassistant.components.cover import (
     ATTR_POSITION,
     CoverDeviceClass,
@@ -15,6 +13,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
 from .hub import XComfortHub
+from .xcomfort.devices import Shade
 
 _LOGGER = logging.getLogger(__name__)
 

@@ -5,10 +5,6 @@
   },
   "workspaceFolder": "/workspaces/ha-xcomfort-bridge",
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/ha-xcomfort-bridge,type=bind",
-  "mounts": [
-    "source=${localWorkspaceFolder}/../xcomfort-python,target=/workspaces/xcomfort-python,type=bind,consistency=cached"
-  ],
-  "postCreateCommand": "pip install -e /workspaces/xcomfort-python",
   "forwardPorts": [
     8123
   ],

@@ -1,8 +1,6 @@
 """Binary sensor platform for xComfort integration with Home Assistant."""
 import logging
 
-from xcomfort.devices import DoorSensor, DoorWindowSensor, WindowSensor
-
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
     BinarySensorEntity,
@@ -12,6 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .hub import XComfortHub
+from .xcomfort.devices import DoorSensor, DoorWindowSensor, WindowSensor
 
 _LOGGER = logging.getLogger(__name__)
 

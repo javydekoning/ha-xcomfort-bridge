@@ -7,9 +7,6 @@ import math
 import time
 from typing import cast
 
-from xcomfort.bridge import Room
-from xcomfort.devices import RcTouch, Rocker
-
 from homeassistant.components.sensor import (
     RestoreSensor,
     SensorDeviceClass,
@@ -32,8 +29,25 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
 from .hub import XComfortHub
+from .xcomfort.bridge import Room
+from .xcomfort.constants import ComponentTypes
+from .xcomfort.devices import Heater, RcTouch, Rocker
 
 _LOGGER = logging.getLogger(__name__)
+
+# Multi-channel component types that should be grouped into a single device
+MULTI_CHANNEL_COMPONENTS = {
+    ComponentTypes.PUSH_BUTTON_2_CHANNEL,
+    ComponentTypes.PUSH_BUTTON_4_CHANNEL,
+    ComponentTypes.PUSH_BUTTON_MULTI_SENSOR_2_CHANNEL,
+    ComponentTypes.PUSH_BUTTON_MULTI_SENSOR_4_CHANNEL,
+    ComponentTypes.REMOTE_CONTROL_2_CHANNEL,
+}
+
+
+def _is_multi_channel_component(comp_type: int) -> bool:
+    """Check if a component type is multi-channel."""
+    return comp_type in MULTI_CHANNEL_COMPONENTS
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
@@ -52,37 +66,86 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         XComfortHubSensor(hub, entry, "ip_address", "IP Address", "mdi:ip-network", ip),
         XComfortHubSensor(hub, entry, "home_scenes_count", "Scenes Count", "mdi:script-text-outline"),
     ]
+
     async_add_entities(hub_sensors)
 
     async def _wait_for_hub_then_setup():
         await hub.has_done_initial_load.wait()
 
-        rooms = hub.rooms
         devices = hub.devices
 
-        _LOGGER.debug("Found %s xcomfort rooms", len(rooms))
-        _LOGGER.debug("Found %s xcomfort devices", len(devices))
+        _LOGGER.debug("Found %s xcomfort devices", len(list(devices)))
 
         sensors = []
-        for room in rooms:
-            if room.state.value is not None:
-                if room.state.value.power is not None:
-                    _LOGGER.debug("Adding power sensors for room %s", room.name)
-                    sensors.append(XComfortPowerSensor(hub, room))
+        processed_multi_sensor_comps = set()  # Track which multi-sensor components we've processed
 
-                if room.state.value.temperature is not None:
-                    _LOGGER.debug("Adding temperature sensor for room %s", room.name)
-                    sensors.append(XComfortEnergySensor(hub, room))
-
+        # Add device-based sensors only (no room-based sensors)
         for device in devices:
             if isinstance(device, RcTouch):
-                _LOGGER.debug("Adding temperature and humidity sensors for RcTouch device %s", device)
+                _LOGGER.debug("Adding temperature and humidity sensors for RcTouch device %s", device.name)
                 sensors.append(XComfortRcTouchTemperatureSensor(hub, device))
                 sensors.append(XComfortRcTouchHumiditySensor(hub, device))
+            elif isinstance(device, Heater):
+                _LOGGER.debug("Adding temperature, heating demand, and power sensors for Heater device %s", device.name)
+                sensors.append(XComfortHeaterTemperatureSensor(hub, device))
+                sensors.append(XComfortHeaterHeatingDemandSensor(hub, device))
+                sensors.append(XComfortHeaterPowerSensor(hub, device))
             elif isinstance(device, Rocker) and device.has_sensors:
-                _LOGGER.debug("Adding temperature and humidity sensors for multisensor Rocker %s", device)
+                comp = device.bridge._comps.get(device.comp_id)  # noqa: SLF001
+                if not comp:
+                    _LOGGER.warning("Rocker %s has sensors but no component, skipping", device.name)
+                    continue
+
+                # For multi-channel components, only create sensors once (not per button)
+                if _is_multi_channel_component(comp.comp_type):
+                    if comp.comp_id in processed_multi_sensor_comps:
+                        _LOGGER.debug(
+                            "Skipping sensor creation for %s - already created for component %s",
+                            device.name,
+                            comp.name,
+                        )
+                        continue
+                    processed_multi_sensor_comps.add(comp.comp_id)
+                    _LOGGER.debug(
+                        "Adding temperature and humidity sensors for multi-channel multisensor component %s",
+                        comp.name,
+                    )
+                else:
+                    _LOGGER.debug("Adding temperature and humidity sensors for multisensor Rocker %s", device.name)
+
                 sensors.append(XComfortRockerTemperatureSensor(hub, device))
                 sensors.append(XComfortRockerHumiditySensor(hub, device))
+
+        # Add room-based sensors
+        rooms = hub.rooms
+        _LOGGER.debug("Found %s xcomfort rooms", len(list(rooms)))
+
+        for room in rooms:
+            # Wait for room state to be initialized
+            if room.state.value is not None and hasattr(room.state.value, "raw"):
+                raw = room.state.value.raw
+
+                # Always add integer sensors for lights, windows, doors
+                if "lightsOn" in raw:
+                    sensors.append(XComfortRoomLightsOnSensor(hub, room))
+                if "windowsOpen" in raw:
+                    sensors.append(XComfortRoomWindowsOpenSensor(hub, room))
+                if "doorsOpen" in raw:
+                    sensors.append(XComfortRoomDoorsOpenSensor(hub, room))
+
+                # Add temperature and humidity if temperatureOnly property exists
+                if "temperatureOnly" in raw:
+                    if "temp" in raw:
+                        sensors.append(XComfortRoomTemperatureSensor(hub, room))
+                    if "humidity" in raw:
+                        sensors.append(XComfortRoomHumiditySensor(hub, room))
+
+                    # Add currentMode sensor if temperatureOnly is False
+                    if raw.get("temperatureOnly") is False:
+                        if "currentMode" in raw:
+                            sensors.append(XComfortRoomCurrentModeSensor(hub, room))
+                        # Add valve sensor for heating demand (will update when valve data arrives)
+                        sensors.append(XComfortRoomValveSensor(hub, room))
 
         _LOGGER.debug("Added %s sensor entities", len(sensors))
         async_add_entities(sensors)
@@ -275,6 +338,12 @@ class XComfortRcTouchTemperatureSensor(SensorEntity):
         self._state = None
         self._device.state.subscribe(lambda state: self._state_change(state))
 
+        # Link to the climate device
+        device_id = f"climate_{DOMAIN}_{hub.identifier}-{device.device_id}"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, device_id)},
+        )
+
     def _state_change(self, state):
         should_update = self._state is not None
 
@@ -314,6 +383,12 @@ class XComfortRcTouchHumiditySensor(SensorEntity):
         self._state = None
         self._device.state.subscribe(lambda state: self._state_change(state))
 
+        # Link to the climate device
+        device_id = f"climate_{DOMAIN}_{hub.identifier}-{device.device_id}"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, device_id)},
+        )
+
     def _state_change(self, state):
         should_update = self._state is not None
 
@@ -325,6 +400,145 @@ class XComfortRcTouchHumiditySensor(SensorEntity):
     def native_value(self):
         """Return the current value."""
         return self._state and self._state.humidity
+
+
+class XComfortHeaterTemperatureSensor(SensorEntity):
+    """Entity class for xComfort Heater temperature sensors."""
+
+    def __init__(self, hub: XComfortHub, device: Heater):
+        """Initialize the temperature sensor entity.
+
+        Args:
+            hub: XComfortHub instance
+            device: Heater device instance
+
+        """
+        self.entity_description = SensorEntityDescription(
+            key="temperature",
+            device_class=SensorDeviceClass.TEMPERATURE,
+            native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+            state_class=SensorStateClass.MEASUREMENT,
+            name="Temperature",
+        )
+        self._device = device
+        self._attr_name = f"{self._device.name} Temperature"
+        self._attr_unique_id = f"temperature_{self._device.name}_{self._device.device_id}"
+
+        self.hub = hub
+        self._state = None
+        self._device.state.subscribe(lambda state: self._state_change(state))
+
+        # Create device info for the heater
+        device_id = f"heater_{DOMAIN}_{hub.identifier}-{device.device_id}"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, device_id)},
+            name=device.name,
+            manufacturer="Eaton",
+            model="xComfort Heating Actuator",
+            via_device=(DOMAIN, hub.hub_id),
+        )
+
+    def _state_change(self, state):
+        should_update = self._state is not None
+
+        self._state = state
+        if should_update:
+            self.async_write_ha_state()
+
+    @property
+    def native_value(self):
+        """Return the current value."""
+        return self._state and self._state.device_temperature
+
+
+class XComfortHeaterHeatingDemandSensor(SensorEntity):
+    """Entity class for xComfort Heater heating demand sensors."""
+
+    def __init__(self, hub: XComfortHub, device: Heater):
+        """Initialize the heating demand sensor entity.
+
+        Args:
+            hub: XComfortHub instance
+            device: Heater device instance
+
+        """
+        self.entity_description = SensorEntityDescription(
+            key="heating_demand",
+            native_unit_of_measurement=PERCENTAGE,
+            state_class=SensorStateClass.MEASUREMENT,
+            name="Heating Demand",
+        )
+        self._device = device
+        self._attr_name = f"{self._device.name} Heating Demand"
+        self._attr_unique_id = f"heating_demand_{self._device.name}_{self._device.device_id}"
+        self._attr_icon = "mdi:radiator"
+
+        self.hub = hub
+        self._state = None
+        self._device.state.subscribe(lambda state: self._state_change(state))
+
+        # Link to the same device as the temperature sensor
+        device_id = f"heater_{DOMAIN}_{hub.identifier}-{device.device_id}"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, device_id)},
+        )
+
+    def _state_change(self, state):
+        should_update = self._state is not None
+
+        self._state = state
+        if should_update:
+            self.async_write_ha_state()
+
+    @property
+    def native_value(self):
+        """Return the current value."""
+        return self._state and self._state.heating_demand
+
+
+class XComfortHeaterPowerSensor(SensorEntity):
+    """Entity class for xComfort Heater power sensors."""
+
+    def __init__(self, hub: XComfortHub, device: Heater):
+        """Initialize the power sensor entity.
+
+        Args:
+            hub: XComfortHub instance
+            device: Heater device instance
+
+        """
+        self.entity_description = SensorEntityDescription(
+            key="power",
+            device_class=SensorDeviceClass.POWER,
+            native_unit_of_measurement=UnitOfPower.WATT,
+            state_class=SensorStateClass.MEASUREMENT,
+            name="Power",
+        )
+        self._device = device
+        self._attr_name = f"{self._device.name} Power"
+        self._attr_unique_id = f"power_{self._device.name}_{self._device.device_id}"
+
+        self.hub = hub
+        self._state = None
+        self._device.state.subscribe(lambda state: self._state_change(state))
+
+        # Link to the same device as the temperature sensor
+        device_id = f"heater_{DOMAIN}_{hub.identifier}-{device.device_id}"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, device_id)},
+        )
+
+    def _state_change(self, state):
+        should_update = self._state is not None
+
+        self._state = state
+        if should_update:
+            self.async_write_ha_state()
+
+    @property
+    def native_value(self):
+        """Return the current value."""
+        return self._state and self._state.power
 
 
 class XComfortRockerTemperatureSensor(SensorEntity):
@@ -352,8 +566,12 @@ class XComfortRockerTemperatureSensor(SensorEntity):
         self._attr_unique_id = f"temperature_rocker_{device.device_id}"
 
         # Link to the same device as the event entity
+        # All pushbutton components now use component-based device identifier
+        # xComfort Component = Home Assistant Device
+        device_identifier = f"event_{DOMAIN}_comp_{device.comp_id}"
+
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, f"event_{DOMAIN}_{device.device_id}")},
+            identifiers={(DOMAIN, device_identifier)},
         )
 
         self.hub = hub
@@ -373,7 +591,7 @@ class XComfortRockerTemperatureSensor(SensorEntity):
         if self._state is None:
             return None
         # Handle both RockerSensorState and legacy bool states
-        if hasattr(self._state, 'temperature'):
+        if hasattr(self._state, "temperature"):
             return self._state.temperature
         return None
 
@@ -403,8 +621,12 @@ class XComfortRockerHumiditySensor(SensorEntity):
         self._attr_unique_id = f"humidity_rocker_{device.device_id}"
 
         # Link to the same device as the event entity
+        # All pushbutton components now use component-based device identifier
+        # xComfort Component = Home Assistant Device
+        device_identifier = f"event_{DOMAIN}_comp_{device.comp_id}"
+
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, f"event_{DOMAIN}_{device.device_id}")},
+            identifiers={(DOMAIN, device_identifier)},
         )
 
         self.hub = hub
@@ -424,6 +646,165 @@ class XComfortRockerHumiditySensor(SensorEntity):
         if self._state is None:
             return None
         # Handle both RockerSensorState and legacy bool states
-        if hasattr(self._state, 'humidity'):
+        if hasattr(self._state, "humidity"):
             return self._state.humidity
         return None
+
+
+class XComfortRoomSensorBase(SensorEntity):
+    """Base class for xComfort room sensors."""
+
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        hub: XComfortHub,
+        room: Room,
+        key: str,
+        name: str,
+        icon: str,
+        state_key: str,
+        device_class: SensorDeviceClass | None = None,
+        unit: str | None = None,
+        state_class: SensorStateClass | None = SensorStateClass.MEASUREMENT,
+        value_fn=None,
+    ):
+        """Initialize the room sensor entity.
+
+        Args:
+            hub: XComfortHub instance
+            room: Room instance
+            key: Sensor key
+            name: Sensor name
+            icon: MDI icon
+            state_key: Key to read from room state
+            device_class: Sensor device class (optional)
+            unit: Unit of measurement (optional)
+            state_class: State class (optional)
+            value_fn: Custom value function (optional)
+
+        """
+        self.entity_description = SensorEntityDescription(
+            key=key,
+            device_class=device_class,
+            native_unit_of_measurement=unit,
+            state_class=state_class,
+            name=name,
+        )
+        self.hub = hub
+        self._room = room
+        self._state_key = state_key
+        self._value_fn = value_fn
+        self._attr_name = name
+        self._attr_unique_id = f"room_{key}_{room.room_id}"
+        self._attr_icon = icon
+        self._state = None
+        room.state.subscribe(lambda state: self._state_change(state))
+
+        device_id = f"room_{DOMAIN}_{hub.identifier}_{room.room_id}"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, device_id)},
+            name=room.name,
+            manufacturer="Eaton",
+            model="xComfort Room",
+            via_device=(DOMAIN, hub.hub_id),
+        )
+
+    def _state_change(self, state):
+        """Handle state changes from the room."""
+        should_update = self._state is not None
+        self._state = state
+        if should_update:
+            self.async_write_ha_state()
+
+    @property
+    def native_value(self):
+        """Return the current value."""
+        if self._state is None or not hasattr(self._state, "raw"):
+            return None
+
+        value = self._state.raw.get(self._state_key)
+        if self._value_fn:
+            return self._value_fn(value, self._state.raw)
+        return value
+
+
+# Room sensor factory functions
+def XComfortRoomLightsOnSensor(hub: XComfortHub, room: Room):
+    """Create a room lights on sensor."""
+    return XComfortRoomSensorBase(hub, room, "lights_on", "Lights On", "mdi:lightbulb-on", "lightsOn")
+
+
+def XComfortRoomWindowsOpenSensor(hub: XComfortHub, room: Room):
+    """Create a room windows open sensor."""
+    return XComfortRoomSensorBase(hub, room, "windows_open", "Windows Open", "mdi:window-open-variant", "windowsOpen")
+
+
+def XComfortRoomDoorsOpenSensor(hub: XComfortHub, room: Room):
+    """Create a room doors open sensor."""
+    return XComfortRoomSensorBase(hub, room, "doors_open", "Doors Open", "mdi:door-open", "doorsOpen")
+
+
+def XComfortRoomTemperatureSensor(hub: XComfortHub, room: Room):
+    """Create a room temperature sensor."""
+    return XComfortRoomSensorBase(
+        hub,
+        room,
+        "temperature",
+        "Temperature",
+        None,
+        "temp",
+        device_class=SensorDeviceClass.TEMPERATURE,
+        unit=UnitOfTemperature.CELSIUS,
+        state_class=SensorStateClass.MEASUREMENT,
+    )
+
+
+def XComfortRoomHumiditySensor(hub: XComfortHub, room: Room):
+    """Create a room humidity sensor."""
+    return XComfortRoomSensorBase(
+        hub,
+        room,
+        "humidity",
+        "Humidity",
+        None,
+        "humidity",
+        device_class=SensorDeviceClass.HUMIDITY,
+        unit=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+    )
+
+
+def XComfortRoomCurrentModeSensor(hub: XComfortHub, room: Room):
+    """Create a room current mode sensor."""
+
+    def map_mode(value, raw):
+        """Map mode value to friendly name."""
+        current_mode = value or raw.get("mode")
+        if current_mode == 0:
+            return "Unknown"
+        if current_mode == 1:
+            return "Frost Protection"
+        if current_mode == 2:
+            return "Eco"
+        if current_mode == 3:
+            return "Comfort"
+        return current_mode
+
+    return XComfortRoomSensorBase(
+        hub, room, "current_mode", "Current Mode", "mdi:thermostat", "currentMode", state_class=None, value_fn=map_mode
+    )
+
+
+def XComfortRoomValveSensor(hub: XComfortHub, room: Room):
+    """Create a room valve/heating demand sensor."""
+    return XComfortRoomSensorBase(
+        hub,
+        room,
+        "heating_demand",
+        "Heating Demand",
+        "mdi:radiator",
+        "valve",
+        unit=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+    )
