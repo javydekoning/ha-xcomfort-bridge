@@ -1,3 +1,3 @@
-homeassistant==2025.11.3
+homeassistant==2025.12.5
 pip>=21.3.1
 xcomfort==0.1.2
