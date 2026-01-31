@@ -23,6 +23,7 @@ from .devices import (
 
 # Some HA code relies on bridge having imported these:
 from .room import RctModeRange, Room, RoomState  # noqa: F401
+from .scene import Scene
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -63,6 +64,7 @@ class Bridge:
         self._comps = {}
         self._devices = {}
         self._rooms = {}
+        self._scenes = {}
         self.state = State.Uninitialized
         self.on_initialized = asyncio.Event()
         self.connection = None
@@ -74,6 +76,7 @@ class Bridge:
         self.bridge_type = None
         self.fw_version = None
         self.home_scenes_count = 0
+        self.home_scene_ids = []
         self.home_data = {}
 
         # Bridge state (for sensors)
@@ -97,6 +100,11 @@ class Bridge:
     def rooms(self):
         """Get rooms dictionary."""
         return self._rooms
+
+    @property
+    def scenes(self):
+        """Get scenes dictionary."""
+        return self._scenes
 
     async def run(self):
         """Run the bridge main loop."""
@@ -178,6 +186,11 @@ class Bridge:
         """Add a room to the bridge."""
         self._rooms[room.room_id] = room
         _LOGGER.debug("Added room: %s (id: %s)", room.name, room.room_id)
+
+    def _add_scene(self, scene):
+        """Add a scene to the bridge."""
+        self._scenes[scene.scene_id] = scene
+        _LOGGER.debug("Added scene: %s (id: %s)", scene.name, scene.scene_id)
 
     def _handle_SET_DEVICE_STATE(self, payload):
         """Handle device state updates."""
@@ -375,6 +388,26 @@ class Bridge:
 
         return Room(self, room_id, name)
 
+    def _create_scene_from_payload(self, payload):
+        """Create a scene from payload data."""
+        scene_id = payload["sceneId"]
+        name = payload.get("name", f"Scene {scene_id}")
+
+        return Scene(self, scene_id, name, payload)
+
+    def _handle_scene_payload(self, payload):
+        """Handle scene payload."""
+        scene_id = payload["sceneId"]
+        scene = self._scenes.get(scene_id)
+
+        if scene is None:
+            scene = self._create_scene_from_payload(payload)
+            if scene is None:
+                return
+            self._add_scene(scene)
+        else:
+            scene.update(payload)
+
     def _handle_comp_payload(self, payload):
         """Handle component payload."""
         comp_id = payload["compId"]
@@ -482,6 +515,14 @@ class Bridge:
                 except (KeyError, ValueError):
                     _LOGGER.exception("Failed to handle room payload: %s", room_payload)
 
+        if "scenes" in payload:
+            _LOGGER.debug("Processing %d scenes from SET_ALL_DATA", len(payload["scenes"]))
+            for scene_payload in payload["scenes"]:
+                try:
+                    self._handle_scene_payload(scene_payload)
+                except (KeyError, ValueError):
+                    _LOGGER.exception("Failed to handle scene payload: %s", scene_payload)
+
         if "roomHeating" in payload:
             _LOGGER.debug("Processing %d room heating configs from SET_ALL_DATA", len(payload["roomHeating"]))
             for room_payload in payload["roomHeating"]:
@@ -502,6 +543,7 @@ class Bridge:
 
         # Extract home scenes count
         home_scenes = payload.get("homeScenes", [])
+        self.home_scene_ids = list(home_scenes)
         self.home_scenes_count = len(home_scenes)
 
         _LOGGER.debug(
@@ -512,6 +554,30 @@ class Bridge:
             self.fw_version,
             self.home_scenes_count,
         )
+
+    def _handle_SET_SCENE(self, payload):
+        """Handle scene updates."""
+        if "sceneId" not in payload:
+            _LOGGER.warning("SET_SCENE payload missing sceneId: %s", payload)
+            return
+        self._handle_scene_payload(payload)
+
+    def _handle_SET_SCENE_ID(self, payload):
+        """Handle scene updates by ID."""
+        if "sceneId" not in payload:
+            _LOGGER.warning("SET_SCENE_ID payload missing sceneId: %s", payload)
+            return
+        self._handle_scene_payload(payload)
+
+    def _handle_SCENE_DELETED(self, payload):
+        """Handle scene deletion."""
+        scene_id = payload.get("sceneId")
+        if scene_id is None:
+            _LOGGER.warning("SCENE_DELETED payload missing sceneId: %s", payload)
+            return
+        removed = self._scenes.pop(scene_id, None)
+        if removed:
+            _LOGGER.info("Removed scene %s (id: %s)", removed.name, scene_id)
 
     def _handle_SET_BRIDGE_STATE(self, payload):
         """Handle bridge state updates for sensors."""
@@ -616,3 +682,18 @@ class Bridge:
             _LOGGER.debug("Room: id=%s, name=%s, type=%s", room_id, room.name, type(room).__name__)
 
         return self._rooms
+
+    async def get_scenes(self):
+        """Get all scenes."""
+        await self.wait_for_initialization()
+
+        _LOGGER.debug("Getting all scenes - total count: %d", len(self._scenes))
+        for scene_id, scene in self._scenes.items():
+            _LOGGER.debug("Scene: id=%s, name=%s", scene_id, scene.name)
+
+        return self._scenes
+
+    async def activate_scene(self, scene_id: int):
+        """Activate a scene by ID."""
+        _LOGGER.debug("Activating scene %s", scene_id)
+        await self.send_message(Messages.ACTIVATE_SCENE, {"sceneId": scene_id})

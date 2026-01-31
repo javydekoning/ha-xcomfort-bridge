@@ -58,6 +58,11 @@ class XComfortHub:
 
         _LOGGER.info("loaded %s rooms", len(self.rooms))
 
+        scenes = await self.bridge.get_scenes()
+        self.scenes = scenes.values()
+
+        _LOGGER.info("loaded %s scenes", len(self.scenes))
+
         self.has_done_initial_load.set()
 
     @property
