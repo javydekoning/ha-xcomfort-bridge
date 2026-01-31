@@ -35,9 +35,18 @@ class Scene:
         return self.payload.get("order")
 
     @property
-    def icon(self) -> int | None:
+    def icon(self) -> str | None:
         """Return scene icon ID."""
-        return self.payload.get("icon")
+        name = self.payload.get("name")
+
+        icon_map = {
+            "Home": "mdi:home-account",
+            "Away": "mdi:home-off",
+            "Night": "mdi:weather-night",
+            "Morning": "mdi:weather-sunset-up",
+        }
+
+        return icon_map.get(name, "mdi:button-pointer")
 
     @property
     def devices(self) -> list:
