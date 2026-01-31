@@ -19,6 +19,7 @@ PLATFORMS = [
     Platform.LIGHT,
     Platform.SENSOR,
     Platform.EVENT,
+    Platform.SCENE,
 ]
 
 

@@ -140,3 +140,6 @@ dmypy.json
 
 megalinter-reports/
 config/
+
+# Local workspace
+arbeidsmappe/
