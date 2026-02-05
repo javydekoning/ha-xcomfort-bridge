@@ -7,10 +7,21 @@ import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.const import CONF_IP_ADDRESS
+from homeassistant.data_entry_flow import section
 from homeassistant.helpers.device_registry import format_mac
 from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 
-from .const import CONF_AUTH_KEY, CONF_IDENTIFIER, CONF_MAC, DOMAIN
+from .const import (
+    CONF_AUTH_KEY,
+    CONF_IDENTIFIER,
+    CONF_MAC,
+    CONF_TEST_OPTION_3,
+    CONF_TEST_OPTION_4,
+    CONF_TEST_OPTION_1,
+    CONF_TEST_OPTION_2,
+    CONF_TEST_SECTION,
+    DOMAIN,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -105,3 +116,58 @@ class XComfortBridgeConfigFlow(config_entries.ConfigFlow):
     def title(self) -> str:
         """Return the title of the config entry."""
         return self.data.get(CONF_IDENTIFIER, self.data.get(CONF_MAC, self.data.get(CONF_IP_ADDRESS, "Untitled")))
+
+    @staticmethod
+    def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> config_entries.OptionsFlow:
+        """Return the options flow for this handler."""
+        return XComfortBridgeOptionsFlowHandler(config_entry)
+
+
+class XComfortBridgeOptionsFlowHandler(config_entries.OptionsFlow):
+    """Handle options flow for Eaton xComfort Bridge."""
+
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        """Initialize options flow."""
+        self._config_entry = config_entry
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Manage the options for the config entry."""
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+
+        options = self._config_entry.options
+        section_options = options.get(CONF_TEST_SECTION, {})
+        data_schema = vol.Schema(
+            {
+                vol.Optional(
+                    CONF_TEST_OPTION_1,
+                    default=options.get(CONF_TEST_OPTION_1, False),
+                ): bool,
+                vol.Optional(
+                    CONF_TEST_OPTION_2,
+                    default=options.get(CONF_TEST_OPTION_2, False),
+                ): bool,
+                vol.Optional(
+                    CONF_TEST_SECTION,
+                    default=section_options,
+                ): section(
+                    vol.Schema(
+                        {
+                            vol.Optional(
+                                CONF_TEST_OPTION_3,
+                                default=section_options.get(CONF_TEST_OPTION_3, False),
+                            ): bool,
+                            vol.Optional(
+                                CONF_TEST_OPTION_4,
+                                default=section_options.get(CONF_TEST_OPTION_4, False),
+                            ): bool,
+                        }
+                    ),
+                    {"collapsed": False},
+                ),
+            }
+        )
+
+        return self.async_show_form(step_id="init", data_schema=data_schema)

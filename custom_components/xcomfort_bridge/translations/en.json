@@ -5,21 +5,49 @@
       "user": {
         "title": "Eaton xComfort Bridge",
         "data": {
-          "ip_address": "Ip Address",
-          "auth_key": "AuthKey",
+          "ip_address": "IP address",
+          "auth_key": "Auth key",
           "identifier": "Identifier"
         }
       },
       "auth": {
         "title": "Eaton xComfort Bridge",
         "data": {
-          "auth_key": "AuthKey",
+          "auth_key": "Auth key",
           "identifier": "Identifier"
         }
       }
     },
     "abort": {
       "no_devices_found": "No Eaton xComfort Bridge devices found on the network."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "data": {
+          "test_option_1": "Test option 1",
+          "test_option_2": "Test option 2"
+        },
+        "data_description": {
+          "test_option_1": "Fictitious description for test option 1.",
+          "test_option_2": "Fictitious description for test option 2."
+        },
+        "sections": {
+          "test_section": {
+            "name": "Test section 2",
+            "description": "Fictitious section for more options.",
+            "data": {
+              "test_option_3": "Test option 3",
+              "test_option_4": "Test option 4"
+            },
+            "data_description": {
+              "test_option_3": "Fictitious description for test option 3.",
+              "test_option_4": "Fictitious description for test option 4."
+            }
+          }
+        }
+      }
     }
   }
 }
