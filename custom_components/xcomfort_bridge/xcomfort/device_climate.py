@@ -67,6 +67,7 @@ class Heater(BridgeDevice):
         device_temperature = None
         heating_demand = None
         power = None
+        power_present = False
 
         # Extract info array data
         if "info" in payload:
@@ -82,9 +83,15 @@ class Heater(BridgeDevice):
 
         if "power" in payload:
             power = float(payload["power"])
+            power_present = True
+        else:
+            # Keep last known power when this payload does not include it.
+            last_state = self.state.value
+            if last_state is not None and getattr(last_state, "power", None) is not None:
+                power = last_state.power
 
         # Only update state if we have at least one meaningful value
-        if any(v is not None for v in [device_temperature, heating_demand, power]):
+        if device_temperature is not None or heating_demand is not None or power_present:
             _LOGGER.debug(
                 "Heater %s state update: temp=%s°C, demand=%s%%, power=%sW",
                 self.name,
