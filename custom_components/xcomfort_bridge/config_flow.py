@@ -12,14 +12,14 @@ from homeassistant.helpers.device_registry import format_mac
 from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 
 from .const import (
+    CONF_ADD_HEATER_POWER_SENSORS,
+    CONF_ADD_LIGHT_POWER_SENSORS,
+    CONF_ADD_ROOM_POWER_SENSORS,
     CONF_AUTH_KEY,
+    CONF_HEATER_POWER_STALE_PROTECTION,
     CONF_IDENTIFIER,
     CONF_MAC,
-    CONF_TEST_OPTION_3,
-    CONF_TEST_OPTION_4,
-    CONF_TEST_OPTION_1,
-    CONF_TEST_OPTION_2,
-    CONF_TEST_SECTION,
+    CONF_POWER_ENERGY_SECTION,
     DOMAIN,
 )
 
@@ -123,7 +123,7 @@ class XComfortBridgeConfigFlow(config_entries.ConfigFlow):
         return XComfortBridgeOptionsFlowHandler(config_entry)
 
 
-class XComfortBridgeOptionsFlowHandler(config_entries.OptionsFlow):
+class XComfortBridgeOptionsFlowHandler(config_entries.OptionsFlowWithReload):
     """Handle options flow for Eaton xComfort Bridge."""
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
@@ -138,30 +138,30 @@ class XComfortBridgeOptionsFlowHandler(config_entries.OptionsFlow):
             return self.async_create_entry(title="", data=user_input)
 
         options = self._config_entry.options
-        section_options = options.get(CONF_TEST_SECTION, {})
+        section_options = options.get(CONF_POWER_ENERGY_SECTION, {})
         data_schema = vol.Schema(
             {
                 vol.Optional(
-                    CONF_TEST_OPTION_1,
-                    default=options.get(CONF_TEST_OPTION_1, False),
-                ): bool,
-                vol.Optional(
-                    CONF_TEST_OPTION_2,
-                    default=options.get(CONF_TEST_OPTION_2, False),
-                ): bool,
-                vol.Optional(
-                    CONF_TEST_SECTION,
+                    CONF_POWER_ENERGY_SECTION,
                     default=section_options,
                 ): section(
                     vol.Schema(
                         {
                             vol.Optional(
-                                CONF_TEST_OPTION_3,
-                                default=section_options.get(CONF_TEST_OPTION_3, False),
+                                CONF_ADD_ROOM_POWER_SENSORS,
+                                default=section_options.get(CONF_ADD_ROOM_POWER_SENSORS, True),
                             ): bool,
                             vol.Optional(
-                                CONF_TEST_OPTION_4,
-                                default=section_options.get(CONF_TEST_OPTION_4, False),
+                                CONF_ADD_HEATER_POWER_SENSORS,
+                                default=section_options.get(CONF_ADD_HEATER_POWER_SENSORS, False),
+                            ): bool,
+                            vol.Optional(
+                                CONF_HEATER_POWER_STALE_PROTECTION,
+                                default=section_options.get(CONF_HEATER_POWER_STALE_PROTECTION, False),
+                            ): bool,
+                            vol.Optional(
+                                CONF_ADD_LIGHT_POWER_SENSORS,
+                                default=section_options.get(CONF_ADD_LIGHT_POWER_SENSORS, False),
                             ): bool,
                         }
                     ),

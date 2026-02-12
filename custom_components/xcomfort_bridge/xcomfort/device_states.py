@@ -16,15 +16,16 @@ class DeviceState:
 class LightState(DeviceState):
     """Light device state."""
 
-    def __init__(self, switch, dimmvalue, payload):
+    def __init__(self, switch, dimmvalue, power, payload):
         """Initialize light state."""
         DeviceState.__init__(self, payload)
         self.switch = switch
         self.dimmvalue = dimmvalue
+        self.power = power
 
     def __str__(self):
         """Return string representation of light state."""
-        return f"LightState({self.switch}, {self.dimmvalue})"
+        return f"LightState({self.switch}, {self.dimmvalue}, power={self.power})"
 
     __repr__ = __str__
 

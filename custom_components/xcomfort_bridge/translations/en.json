@@ -25,25 +25,18 @@
   "options": {
     "step": {
       "init": {
-        "data": {
-          "test_option_1": "Test option 1",
-          "test_option_2": "Test option 2"
-        },
-        "data_description": {
-          "test_option_1": "Fictitious description for test option 1.",
-          "test_option_2": "Fictitious description for test option 2."
-        },
         "sections": {
-          "test_section": {
-            "name": "Test section 2",
-            "description": "Fictitious section for more options.",
+          "power_energy_sensors": {
+            "name": "Power/Energy Sensors",
+            "description": "Configure power and energy sensor creation.",
             "data": {
-              "test_option_3": "Test option 3",
-              "test_option_4": "Test option 4"
+              "add_room_power_sensors": "Add power/energy sensors for rooms",
+              "add_heater_power_sensors": "Add power/energy sensors for heaters",
+              "heater_power_stale_protection": "Heater power: stale protection",
+              "add_light_power_sensors": "Add power/energy sensors for lights"
             },
             "data_description": {
-              "test_option_3": "Fictitious description for test option 3.",
-              "test_option_4": "Fictitious description for test option 4."
+              "heater_power_stale_protection": "Reduce over-reported heater power by applying a room-based fallback when updates are missing. Experimental; see info.md."
             }
           }
         }
