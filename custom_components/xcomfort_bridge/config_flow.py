@@ -1,5 +1,6 @@
 """Config flow for Eaton xComfort Bridge."""
 
+import asyncio
 import logging
 from typing import Any
 
@@ -9,6 +10,7 @@ from homeassistant import config_entries
 from homeassistant.const import CONF_IP_ADDRESS
 from homeassistant.data_entry_flow import section
 from homeassistant.helpers.device_registry import format_mac
+from homeassistant.helpers import selector
 from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 
 from .const import (
@@ -16,12 +18,17 @@ from .const import (
     CONF_ADD_LIGHT_POWER_SENSORS,
     CONF_ADD_ROOM_POWER_SENSORS,
     CONF_AUTH_KEY,
+    CONF_HEATER_ROOM_ID,
+    CONF_HEATER_ROOM_MAPPING,
+    CONF_HEATER_ROOM_SKIP_REMAINING,
     CONF_HEATER_POWER_STALE_PROTECTION,
     CONF_IDENTIFIER,
     CONF_MAC,
     CONF_POWER_ENERGY_SECTION,
     DOMAIN,
 )
+from .hub import XComfortHub
+from .xcomfort.devices import Heater
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -129,16 +136,37 @@ class XComfortBridgeOptionsFlowHandler(config_entries.OptionsFlowWithReload):
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialize options flow."""
         self._config_entry = config_entry
+        self._pending_options: dict[str, Any] = {}
+        self._heater_devices: list[Heater] = []
+        self._rooms = []
+        self._heater_index = 0
+        self._heater_room_mapping: dict[str, int] = {}
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
         """Manage the options for the config entry."""
         if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+            options = dict(self._config_entry.options)
+            section_options = dict(options.get(CONF_POWER_ENERGY_SECTION, {}))
+            section_options.update(user_input.get(CONF_POWER_ENERGY_SECTION, {}))
+            if not section_options.get(CONF_HEATER_POWER_STALE_PROTECTION, False):
+                section_options.pop(CONF_HEATER_ROOM_MAPPING, None)
+            options[CONF_POWER_ENERGY_SECTION] = section_options
+            self._pending_options = options
+
+            if section_options.get(CONF_HEATER_POWER_STALE_PROTECTION, False):
+                await self._load_mapping_data()
+                existing_mapping = section_options.get(CONF_HEATER_ROOM_MAPPING, {})
+                self._heater_room_mapping = _normalize_heater_room_mapping(existing_mapping)
+                if self._heater_devices and self._rooms:
+                    self._heater_index = 0
+                    return await self.async_step_heater_mapping()
+
+            return self.async_create_entry(title="", data=self._pending_options)
 
         options = self._config_entry.options
-        section_options = options.get(CONF_POWER_ENERGY_SECTION, {})
+        section_options = _filter_power_section_options(options.get(CONF_POWER_ENERGY_SECTION, {}))
         data_schema = vol.Schema(
             {
                 vol.Optional(
@@ -171,3 +199,141 @@ class XComfortBridgeOptionsFlowHandler(config_entries.OptionsFlowWithReload):
         )
 
         return self.async_show_form(step_id="init", data_schema=data_schema)
+
+    async def async_step_heater_mapping(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Map heaters to rooms for stale protection."""
+        if user_input is not None:
+            heater = self._heater_devices[self._heater_index]
+            selection = user_input.get(CONF_HEATER_ROOM_ID)
+            self._update_heater_mapping(heater, selection)
+
+            if user_input.get(CONF_HEATER_ROOM_SKIP_REMAINING):
+                section_options = dict(self._pending_options.get(CONF_POWER_ENERGY_SECTION, {}))
+                if self._heater_room_mapping:
+                    section_options[CONF_HEATER_ROOM_MAPPING] = self._heater_room_mapping
+                else:
+                    section_options.pop(CONF_HEATER_ROOM_MAPPING, None)
+                self._pending_options[CONF_POWER_ENERGY_SECTION] = section_options
+                return self.async_create_entry(title="", data=self._pending_options)
+
+            self._heater_index += 1
+            if self._heater_index >= len(self._heater_devices):
+                section_options = dict(self._pending_options.get(CONF_POWER_ENERGY_SECTION, {}))
+                if self._heater_room_mapping:
+                    section_options[CONF_HEATER_ROOM_MAPPING] = self._heater_room_mapping
+                else:
+                    section_options.pop(CONF_HEATER_ROOM_MAPPING, None)
+                self._pending_options[CONF_POWER_ENERGY_SECTION] = section_options
+                return self.async_create_entry(title="", data=self._pending_options)
+
+        heater = self._heater_devices[self._heater_index]
+        default_value = _get_default_room_selection(heater, self._heater_room_mapping)
+        options = _build_room_options(self._rooms, default_value)
+        data_schema = vol.Schema(
+            {
+                vol.Required(
+                    CONF_HEATER_ROOM_ID,
+                    default=default_value,
+                ): selector.SelectSelector(
+                    {
+                        "options": options,
+                        "mode": selector.SelectSelectorMode.DROPDOWN,
+                    }
+                ),
+                vol.Optional(
+                    CONF_HEATER_ROOM_SKIP_REMAINING,
+                    default=False,
+                ): bool,
+            }
+        )
+
+        return self.async_show_form(
+            step_id="heater_mapping",
+            data_schema=data_schema,
+            description_placeholders={
+                "heater": heater.name,
+                "index": str(self._heater_index + 1),
+                "total": str(len(self._heater_devices)),
+            },
+        )
+
+    async def _load_mapping_data(self) -> None:
+        """Load heaters and rooms for mapping."""
+        hub = XComfortHub.get_hub(self.hass, self._config_entry)
+        try:
+            await asyncio.wait_for(hub.has_done_initial_load.wait(), timeout=5)
+        except asyncio.TimeoutError:
+            _LOGGER.warning("Timed out waiting for hub data; skipping heater mapping UI")
+        devices = list(getattr(hub, "devices", []) or [])
+        rooms = list(getattr(hub, "rooms", []) or [])
+        self._heater_devices = sorted(
+            [device for device in devices if isinstance(device, Heater)],
+            key=lambda device: device.name.lower(),
+        )
+        self._rooms = sorted(
+            rooms,
+            key=lambda room: room.name.lower(),
+        )
+
+    def _update_heater_mapping(self, heater: Heater, selection: str | None) -> None:
+        """Store mapping selection for a heater."""
+        heater_key = str(heater.device_id)
+        if not selection or selection == _AUTO_ROOM_SELECTION:
+            self._heater_room_mapping.pop(heater_key, None)
+            return
+        try:
+            self._heater_room_mapping[heater_key] = int(selection)
+        except (TypeError, ValueError):
+            self._heater_room_mapping.pop(heater_key, None)
+
+
+_AUTO_ROOM_SELECTION = "auto"
+
+
+def _normalize_heater_room_mapping(mapping: dict[str, Any]) -> dict[str, int]:
+    """Normalize stored heater-room mapping values."""
+    normalized: dict[str, int] = {}
+    if not isinstance(mapping, dict):
+        return normalized
+    for heater_id, room_id in mapping.items():
+        try:
+            normalized[str(int(heater_id))] = int(room_id)
+        except (TypeError, ValueError):
+            continue
+    return normalized
+
+
+def _get_default_room_selection(heater: Heater, mapping: dict[str, int]) -> str:
+    """Return default room selection for a heater."""
+    room_id = mapping.get(str(heater.device_id))
+    if room_id is None:
+        return _AUTO_ROOM_SELECTION
+    return str(room_id)
+
+
+def _build_room_options(rooms: list, default_value: str) -> list[dict[str, str]]:
+    """Build room options for the selector."""
+    options = [{"value": _AUTO_ROOM_SELECTION, "label": "Auto (name match)"}]
+    room_ids = set()
+    for room in rooms:
+        room_id = str(room.room_id)
+        room_ids.add(room_id)
+        options.append({"value": room_id, "label": f"{room.name} (id: {room.room_id})"})
+    if default_value not in room_ids and default_value != _AUTO_ROOM_SELECTION:
+        options.append({"value": default_value, "label": f"Unknown room (id: {default_value})"})
+    return options
+
+
+def _filter_power_section_options(options: dict[str, Any]) -> dict[str, Any]:
+    """Return only schema-supported keys for the power/energy section."""
+    if not isinstance(options, dict):
+        return {}
+    allowed_keys = {
+        CONF_ADD_ROOM_POWER_SENSORS,
+        CONF_ADD_HEATER_POWER_SENSORS,
+        CONF_HEATER_POWER_STALE_PROTECTION,
+        CONF_ADD_LIGHT_POWER_SENSORS,
+    }
+    return {key: value for key, value in options.items() if key in allowed_keys}

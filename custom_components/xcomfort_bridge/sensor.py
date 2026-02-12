@@ -34,6 +34,7 @@ from .const import (
     CONF_ADD_HEATER_POWER_SENSORS,
     CONF_ADD_LIGHT_POWER_SENSORS,
     CONF_ADD_ROOM_POWER_SENSORS,
+    CONF_HEATER_ROOM_MAPPING,
     CONF_HEATER_POWER_STALE_PROTECTION,
     CONF_POWER_ENERGY_SECTION,
     DOMAIN,
@@ -65,7 +66,7 @@ def _is_multi_channel_component(comp_type: int) -> bool:
     return comp_type in MULTI_CHANNEL_COMPONENTS
 
 
-def _get_power_sensor_options(entry: ConfigEntry) -> tuple[bool, bool, bool, bool]:
+def _get_power_sensor_options(entry: ConfigEntry) -> tuple[bool, bool, bool, bool, dict[str, int]]:
     """Return options for power/energy sensor creation."""
     options = entry.options
     section_options = options.get(CONF_POWER_ENERGY_SECTION, {})
@@ -73,7 +74,8 @@ def _get_power_sensor_options(entry: ConfigEntry) -> tuple[bool, bool, bool, boo
     add_heater = section_options.get(CONF_ADD_HEATER_POWER_SENSORS, False)
     add_light = section_options.get(CONF_ADD_LIGHT_POWER_SENSORS, False)
     stale_protection = section_options.get(CONF_HEATER_POWER_STALE_PROTECTION, False)
-    return add_room, add_heater, add_light, stale_protection
+    mapping = _normalize_heater_room_mapping(section_options.get(CONF_HEATER_ROOM_MAPPING, {}))
+    return add_room, add_heater, add_light, stale_protection, mapping
 
 
 def _normalize_name(name: str) -> str:
@@ -85,6 +87,19 @@ def _normalize_name(name: str) -> str:
             key = key[len(prefix) :]
             break
     return key
+
+
+def _normalize_heater_room_mapping(mapping: dict) -> dict[str, int]:
+    """Normalize stored heater-room mapping values."""
+    normalized: dict[str, int] = {}
+    if not isinstance(mapping, dict):
+        return normalized
+    for heater_id, room_id in mapping.items():
+        try:
+            normalized[str(int(heater_id))] = int(room_id)
+        except (TypeError, ValueError):
+            continue
+    return normalized
 
 
 def _build_room_lookup(rooms: list[Room]) -> dict[str, Room]:
@@ -161,11 +176,13 @@ def _build_device_sensors(
     add_heater_power_sensors: bool,
     add_light_power_sensors: bool,
     heater_stale_protection: bool,
+    heater_room_mapping: dict[str, int],
 ) -> list[SensorEntity]:
     """Create sensors based on devices."""
     sensors: list[SensorEntity] = []
     processed_multi_sensor_comps = set()
     rooms_by_key = _build_room_lookup(rooms) if heater_stale_protection else {}
+    rooms_by_id = {room.room_id: room for room in rooms} if heater_stale_protection else {}
     mapped_heaters = 0
     unmatched_heaters = 0
 
@@ -177,7 +194,17 @@ def _build_device_sensors(
         elif isinstance(device, Heater):
             matched_room = None
             if heater_stale_protection:
-                matched_room = _match_room_for_heater(rooms_by_key, device.name) if rooms_by_key else None
+                mapped_room_id = heater_room_mapping.get(str(device.device_id))
+                if mapped_room_id is not None:
+                    matched_room = rooms_by_id.get(mapped_room_id)
+                    if matched_room is None:
+                        _LOGGER.warning(
+                            "Heater %s mapped to unknown room id %s; falling back to name match",
+                            device.name,
+                            mapped_room_id,
+                        )
+                if matched_room is None:
+                    matched_room = _match_room_for_heater(rooms_by_key, device.name) if rooms_by_key else None
                 if matched_room is None:
                     unmatched_heaters += 1
                     _LOGGER.info('Heater room mapping: "%s" -> (no match)', device.name)
@@ -287,14 +314,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         add_heater_power_sensors,
         add_light_power_sensors,
         heater_stale_protection,
+        heater_room_mapping,
     ) = _get_power_sensor_options(entry)
 
     _LOGGER.debug(
-        "Power/energy sensor options: room=%s heater=%s light=%s stale_protection=%s",
+        "Power/energy sensor options: room=%s heater=%s light=%s stale_protection=%s mapping=%s",
         add_room_power_sensors,
         add_heater_power_sensors,
         add_light_power_sensors,
         heater_stale_protection,
+        len(heater_room_mapping),
     )
 
     if add_light_power_sensors:
@@ -339,6 +368,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
             add_heater_power_sensors,
             add_light_power_sensors,
             heater_stale_protection,
+            heater_room_mapping,
         )
 
         _LOGGER.debug("Found %s xcomfort rooms", len(list(rooms)))

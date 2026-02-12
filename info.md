@@ -20,6 +20,7 @@ How it works:
 When the fallback is triggered, a warning is logged so you can see when stale protection was applied.
 Heater-to-room mapping is name-based. We normalize names to lowercase and strip common prefixes like "varmekabel", "panelovn", and "heater", then look for an exact match. If none is found, we try prefix matches (either direction) and use the first match.
 When stale protection is enabled, the mapping results are logged at INFO level at startup/reload so you can verify which heaters map to which rooms.
+You can override the mapping per heater in the options flow (when stale protection is enabled). Manual mappings take precedence over name matching.
 
 Why it exists:
 - Some heater devices rarely send explicit "off" updates.

@@ -40,6 +40,18 @@
             }
           }
         }
+      },
+      "heater_mapping": {
+        "title": "Heater room mapping",
+        "description": "Select the room to associate with {heater} for stale protection. ({index}/{total})",
+        "data": {
+          "heater_room_id": "Room",
+          "heater_room_skip_remaining": "Use Auto for remaining heaters"
+        },
+        "data_description": {
+          "heater_room_id": "Choose Auto (name match) to use the default name-based matching.",
+          "heater_room_skip_remaining": "Finish mapping and leave the rest on Auto (name match)."
+        }
       }
     }
   }
