@@ -32,25 +32,9 @@
             "data": {
               "add_room_power_sensors": "Add power/energy sensors for rooms",
               "add_heater_power_sensors": "Add power/energy sensors for heaters",
-              "heater_power_stale_protection": "Heater power: stale protection",
               "add_light_power_sensors": "Add power/energy sensors for lights"
-            },
-            "data_description": {
-              "heater_power_stale_protection": "Reduce over-reported heater power by applying a room-based fallback when updates are missing. Experimental; see info.md."
             }
           }
-        }
-      },
-      "heater_mapping": {
-        "title": "Heater room mapping",
-        "description": "Select the room to associate with {heater} for stale protection. ({index}/{total})",
-        "data": {
-          "heater_room_id": "Room",
-          "heater_room_skip_remaining": "Use Auto for remaining heaters"
-        },
-        "data_description": {
-          "heater_room_id": "Choose Auto (name match) to use the default name-based matching.",
-          "heater_room_skip_remaining": "Finish mapping and leave the rest on Auto (name match)."
         }
       }
     }

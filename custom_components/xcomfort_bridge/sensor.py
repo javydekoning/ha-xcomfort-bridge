@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
 import logging
 import math
 import time
@@ -28,14 +27,11 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.event import async_track_time_interval
 
 from .const import (
     CONF_ADD_HEATER_POWER_SENSORS,
     CONF_ADD_LIGHT_POWER_SENSORS,
     CONF_ADD_ROOM_POWER_SENSORS,
-    CONF_HEATER_ROOM_MAPPING,
-    CONF_HEATER_POWER_STALE_PROTECTION,
     CONF_POWER_ENERGY_SECTION,
     DOMAIN,
 )
@@ -55,67 +51,19 @@ MULTI_CHANNEL_COMPONENTS = {
     ComponentTypes.REMOTE_CONTROL_2_CHANNEL,
 }
 
-# Fallback tuning for stale heater power vs room power
-FALLBACK_POWER_THRESHOLD_W = 0.5  # Treat anything below as effectively zero
-FALLBACK_ZERO_WINDOW_SEC = 20  # How long room must be at zero before forcing heater to zero
-FALLBACK_TICK_INTERVAL_SEC = 20  # Periodic tick to enforce fallback even without new room events
-
-
 def _is_multi_channel_component(comp_type: int) -> bool:
     """Check if a component type is multi-channel."""
     return comp_type in MULTI_CHANNEL_COMPONENTS
 
 
-def _get_power_sensor_options(entry: ConfigEntry) -> tuple[bool, bool, bool, bool, dict[str, int]]:
+def _get_power_sensor_options(entry: ConfigEntry) -> tuple[bool, bool, bool]:
     """Return options for power/energy sensor creation."""
     options = entry.options
     section_options = options.get(CONF_POWER_ENERGY_SECTION, {})
     add_room = section_options.get(CONF_ADD_ROOM_POWER_SENSORS, True)
     add_heater = section_options.get(CONF_ADD_HEATER_POWER_SENSORS, False)
     add_light = section_options.get(CONF_ADD_LIGHT_POWER_SENSORS, False)
-    stale_protection = section_options.get(CONF_HEATER_POWER_STALE_PROTECTION, False)
-    mapping = _normalize_heater_room_mapping(section_options.get(CONF_HEATER_ROOM_MAPPING, {}))
-    return add_room, add_heater, add_light, stale_protection, mapping
-
-
-def _normalize_name(name: str) -> str:
-    """Normalize heater/room names for matching."""
-    prefixes = ("varmekabel ", "panelovn ", "heater ")
-    key = name.lower().strip()
-    for prefix in prefixes:
-        if key.startswith(prefix):
-            key = key[len(prefix) :]
-            break
-    return key
-
-
-def _normalize_heater_room_mapping(mapping: dict) -> dict[str, int]:
-    """Normalize stored heater-room mapping values."""
-    normalized: dict[str, int] = {}
-    if not isinstance(mapping, dict):
-        return normalized
-    for heater_id, room_id in mapping.items():
-        try:
-            normalized[str(int(heater_id))] = int(room_id)
-        except (TypeError, ValueError):
-            continue
-    return normalized
-
-
-def _build_room_lookup(rooms: list[Room]) -> dict[str, Room]:
-    """Build a room lookup by normalized name."""
-    return {_normalize_name(room.name): room for room in rooms}
-
-
-def _match_room_for_heater(rooms_by_key: dict[str, Room], heater_name: str) -> Room | None:
-    """Find the best room match for a heater name."""
-    heater_key = _normalize_name(heater_name)
-    if heater_key in rooms_by_key:
-        return rooms_by_key[heater_key]
-    for room_key, room in rooms_by_key.items():
-        if heater_key.startswith(room_key) or room_key.startswith(heater_key):
-            return room
-    return None
+    return add_room, add_heater, add_light
 
 
 def _remove_power_energy_entities(
@@ -172,19 +120,12 @@ def _remove_power_energy_entities(
 def _build_device_sensors(
     hub: XComfortHub,
     devices: list,
-    rooms: list,
     add_heater_power_sensors: bool,
     add_light_power_sensors: bool,
-    heater_stale_protection: bool,
-    heater_room_mapping: dict[str, int],
 ) -> list[SensorEntity]:
     """Create sensors based on devices."""
     sensors: list[SensorEntity] = []
     processed_multi_sensor_comps = set()
-    rooms_by_key = _build_room_lookup(rooms) if heater_stale_protection else {}
-    rooms_by_id = {room.room_id: room for room in rooms} if heater_stale_protection else {}
-    mapped_heaters = 0
-    unmatched_heaters = 0
 
     for device in devices:
         if isinstance(device, RcTouch):
@@ -192,25 +133,6 @@ def _build_device_sensors(
             sensors.append(XComfortRcTouchTemperatureSensor(hub, device))
             sensors.append(XComfortRcTouchHumiditySensor(hub, device))
         elif isinstance(device, Heater):
-            matched_room = None
-            if heater_stale_protection:
-                mapped_room_id = heater_room_mapping.get(str(device.device_id))
-                if mapped_room_id is not None:
-                    matched_room = rooms_by_id.get(mapped_room_id)
-                    if matched_room is None:
-                        _LOGGER.warning(
-                            "Heater %s mapped to unknown room id %s; falling back to name match",
-                            device.name,
-                            mapped_room_id,
-                        )
-                if matched_room is None:
-                    matched_room = _match_room_for_heater(rooms_by_key, device.name) if rooms_by_key else None
-                if matched_room is None:
-                    unmatched_heaters += 1
-                    _LOGGER.info('Heater room mapping: "%s" -> (no match)', device.name)
-                else:
-                    mapped_heaters += 1
-                    _LOGGER.info('Heater room mapping: "%s" -> "%s"', device.name, matched_room.name)
             if add_heater_power_sensors:
                 _LOGGER.debug(
                     "Adding temperature, heating demand, power, and energy sensors for Heater device %s",
@@ -224,8 +146,8 @@ def _build_device_sensors(
             sensors.append(XComfortHeaterTemperatureSensor(hub, device))
             sensors.append(XComfortHeaterHeatingDemandSensor(hub, device))
             if add_heater_power_sensors:
-                sensors.append(XComfortHeaterPowerSensor(hub, device, matched_room, heater_stale_protection))
-                sensors.append(XComfortHeaterEnergySensor(hub, device, matched_room, heater_stale_protection))
+                sensors.append(XComfortHeaterPowerSensor(hub, device))
+                sensors.append(XComfortHeaterEnergySensor(hub, device))
         elif isinstance(device, Light) and add_light_power_sensors:
             _LOGGER.debug("Adding power and energy sensors for Light device %s", device.name)
             sensors.append(XComfortLightPowerSensor(hub, device))
@@ -255,13 +177,6 @@ def _build_device_sensors(
 
             sensors.append(XComfortRockerTemperatureSensor(hub, device))
             sensors.append(XComfortRockerHumiditySensor(hub, device))
-
-    if heater_stale_protection and (mapped_heaters + unmatched_heaters) > 0:
-        _LOGGER.info(
-            "Heater room mapping complete: %s matched, %s unmatched",
-            mapped_heaters,
-            unmatched_heaters,
-        )
 
     return sensors
 
@@ -313,17 +228,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         add_room_power_sensors,
         add_heater_power_sensors,
         add_light_power_sensors,
-        heater_stale_protection,
-        heater_room_mapping,
     ) = _get_power_sensor_options(entry)
 
     _LOGGER.debug(
-        "Power/energy sensor options: room=%s heater=%s light=%s stale_protection=%s mapping=%s",
+        "Power/energy sensor options: room=%s heater=%s light=%s",
         add_room_power_sensors,
         add_heater_power_sensors,
         add_light_power_sensors,
-        heater_stale_protection,
-        len(heater_room_mapping),
     )
 
     if add_light_power_sensors:
@@ -364,11 +275,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         sensors = _build_device_sensors(
             hub,
             devices,
-            rooms,
             add_heater_power_sensors,
             add_light_power_sensors,
-            heater_stale_protection,
-            heater_room_mapping,
         )
 
         _LOGGER.debug("Found %s xcomfort rooms", len(list(rooms)))
@@ -732,20 +640,12 @@ class XComfortHeaterHeatingDemandSensor(SensorEntity):
 class XComfortHeaterPowerSensor(SensorEntity):
     """Entity class for xComfort Heater power sensors."""
 
-    def __init__(
-        self,
-        hub: XComfortHub,
-        device: Heater,
-        room: Room | None = None,
-        stale_protection: bool = False,
-    ):
+    def __init__(self, hub: XComfortHub, device: Heater):
         """Initialize the power sensor entity.
 
         Args:
             hub: XComfortHub instance
             device: Heater device instance
-            room: Optional matched room for stale protection
-            stale_protection: Enable stale power fallback using room power
 
         """
         self.entity_description = SensorEntityDescription(
@@ -761,14 +661,7 @@ class XComfortHeaterPowerSensor(SensorEntity):
 
         self.hub = hub
         self._state = None
-        self._room = room
-        self._stale_protection = stale_protection
-        self._room_zero_since: float | None = None
-        self._forced_zero = False
-        self._unsub_tick = None
         self._device.state.subscribe(lambda state: self._state_change(state))
-        if self._room and self._stale_protection:
-            self._room.state.subscribe(lambda state: self._room_state_change(state))
 
         # Link to the same device as the temperature sensor
         device_id = f"heater_{DOMAIN}_{hub.identifier}-{device.device_id}"
@@ -776,119 +669,27 @@ class XComfortHeaterPowerSensor(SensorEntity):
             identifiers={(DOMAIN, device_id)},
         )
 
-    async def async_added_to_hass(self) -> None:
-        """Register periodic tick for fallback checks."""
-        await super().async_added_to_hass()
-        if self._stale_protection and self._room and self.hass is not None:
-            self._unsub_tick = async_track_time_interval(
-                self.hass, lambda now: self._check_tick(), timedelta(seconds=FALLBACK_TICK_INTERVAL_SEC)
-            )
-
-    async def async_will_remove_from_hass(self) -> None:
-        """Clean up periodic tick on removal."""
-        await super().async_will_remove_from_hass()
-        if self._unsub_tick is not None:
-            self._unsub_tick()
-            self._unsub_tick = None
-
-    def _safe_write_ha_state(self) -> None:
-        """Schedule state write on the event loop to avoid thread-safety issues."""
-        if self.hass is None:
-            return
-        loop = self.hass.loop
-        if loop is None or not loop.is_running():
-            return
-        loop.call_soon_threadsafe(self.async_write_ha_state)
-
     def _state_change(self, state):
         should_update = self._state is not None
-
         self._state = state
-        if self._stale_protection and getattr(state, "power", None) is not None:
-            if state.power <= FALLBACK_POWER_THRESHOLD_W:
-                self._forced_zero = False
         if should_update:
-            if self._stale_protection:
-                self._safe_write_ha_state()
-            else:
-                self.async_write_ha_state()
-
-    def _room_state_change(self, state):
-        """Track room power to optionally zero stale heater readings."""
-        if state is None or not hasattr(state, "power"):
-            return
-        if state.power is None:
-            return
-        now = time.monotonic()
-        if state.power <= FALLBACK_POWER_THRESHOLD_W:
-            if self._room_zero_since is None:
-                self._room_zero_since = now
-        else:
-            self._room_zero_since = None
-            self._forced_zero = False
-        if self._room_zero_since and getattr(self._state, "power", None) is not None:
-            elapsed = now - self._room_zero_since
-            if (
-                elapsed >= FALLBACK_ZERO_WINDOW_SEC
-                and self._state.power > FALLBACK_POWER_THRESHOLD_W
-                and not self._forced_zero
-            ):
-                _LOGGER.warning(
-                    "Forcing heater power to 0 due to room reporting 0 for %ss: room=%s heater=%s prev_power=%.1f",
-                    int(elapsed),
-                    self._room.name if self._room else "unknown",
-                    self._device.name,
-                    self._state.power,
-                )
-                self._forced_zero = True
-                self._safe_write_ha_state()
-
-    def _check_tick(self):
-        """Periodic check to apply fallback even without new room updates."""
-        if not self._stale_protection or self._room_zero_since is None:
-            return
-        if getattr(self._state, "power", None) is None:
-            return
-        if self._state.power <= FALLBACK_POWER_THRESHOLD_W:
-            return
-        elapsed = time.monotonic() - self._room_zero_since
-        if elapsed < FALLBACK_ZERO_WINDOW_SEC or self._forced_zero:
-            return
-        _LOGGER.warning(
-            "Forcing heater power to 0 (periodic check) due to room reporting 0 for %ss: room=%s heater=%s prev_power=%.1f",
-            int(elapsed),
-            self._room.name if self._room else "unknown",
-            self._device.name,
-            self._state.power,
-        )
-        self._forced_zero = True
-        self._safe_write_ha_state()
+            self.async_write_ha_state()
 
     @property
     def native_value(self):
         """Return the current value."""
-        if self._stale_protection and self._forced_zero:
-            return 0.0
         return self._state and self._state.power
 
 
 class XComfortHeaterEnergySensor(RestoreSensor):
     """Entity class for xComfort Heater energy sensors."""
 
-    def __init__(
-        self,
-        hub: XComfortHub,
-        device: Heater,
-        room: Room | None = None,
-        stale_protection: bool = False,
-    ):
+    def __init__(self, hub: XComfortHub, device: Heater):
         """Initialize the energy sensor entity.
 
         Args:
             hub: XComfortHub instance
             device: Heater device instance
-            room: Optional matched room for stale protection
-            stale_protection: Enable stale power fallback using room power
 
         """
         self.entity_description = SensorEntityDescription(
@@ -906,13 +707,6 @@ class XComfortHeaterEnergySensor(RestoreSensor):
         self._state = None
         self._update_time = time.monotonic()
         self._consumption = 0.0
-        self._room = room
-        self._stale_protection = stale_protection
-        self._room_zero_since: float | None = None
-        self._forced_zero = False
-        self._unsub_tick = None
-        if self._room and self._stale_protection:
-            self._room.state.subscribe(lambda state: self._room_state_change(state))
         self._device.state.subscribe(lambda state: self._state_change(state))
 
         # Link to the same device as the temperature sensor
@@ -927,89 +721,12 @@ class XComfortHeaterEnergySensor(RestoreSensor):
         saved_state = await self.async_get_last_sensor_data()
         if saved_state and saved_state.native_value is not None:
             self._consumption = cast("float", saved_state.native_value)
-        if self._stale_protection and self._room and self.hass is not None:
-            self._unsub_tick = async_track_time_interval(
-                self.hass, lambda now: self._check_tick(), timedelta(seconds=FALLBACK_TICK_INTERVAL_SEC)
-            )
-
-    async def async_will_remove_from_hass(self) -> None:
-        """Clean up periodic tick on removal."""
-        await super().async_will_remove_from_hass()
-        if self._unsub_tick is not None:
-            self._unsub_tick()
-            self._unsub_tick = None
-
-    def _safe_write_ha_state(self) -> None:
-        """Schedule state write on the event loop to avoid thread-safety issues."""
-        if self.hass is None:
-            return
-        loop = self.hass.loop
-        if loop is None or not loop.is_running():
-            return
-        loop.call_soon_threadsafe(self.async_write_ha_state)
 
     def _state_change(self, state):
         should_update = self._state is not None
         self._state = state
-        if self._stale_protection and getattr(state, "power", None) is not None:
-            if state.power <= FALLBACK_POWER_THRESHOLD_W:
-                self._forced_zero = False
         if should_update:
-            if self._stale_protection:
-                self._safe_write_ha_state()
-            else:
-                self.async_write_ha_state()
-
-    def _room_state_change(self, state):
-        """Track room power to optionally zero stale heater readings."""
-        if state is None or not hasattr(state, "power"):
-            return
-        if state.power is None:
-            return
-        now = time.monotonic()
-        if state.power <= FALLBACK_POWER_THRESHOLD_W:
-            if self._room_zero_since is None:
-                self._room_zero_since = now
-        else:
-            self._room_zero_since = None
-            self._forced_zero = False
-        if self._room_zero_since and getattr(self._state, "power", None) is not None:
-            elapsed = now - self._room_zero_since
-            if (
-                elapsed >= FALLBACK_ZERO_WINDOW_SEC
-                and self._state.power > FALLBACK_POWER_THRESHOLD_W
-                and not self._forced_zero
-            ):
-                _LOGGER.warning(
-                    "Forcing heater energy to use 0W due to room reporting 0 for %ss: room=%s heater=%s prev_power=%.1f",
-                    int(elapsed),
-                    self._room.name if self._room else "unknown",
-                    self._device.name,
-                    self._state.power,
-                )
-                self._forced_zero = True
-                self._safe_write_ha_state()
-
-    def _check_tick(self):
-        """Periodic check to apply fallback even without new room updates."""
-        if not self._stale_protection or self._room_zero_since is None:
-            return
-        if getattr(self._state, "power", None) is None:
-            return
-        if self._state.power <= FALLBACK_POWER_THRESHOLD_W:
-            return
-        elapsed = time.monotonic() - self._room_zero_since
-        if elapsed < FALLBACK_ZERO_WINDOW_SEC or self._forced_zero:
-            return
-        _LOGGER.warning(
-            "Forcing heater energy to use 0W (periodic check) due to room reporting 0 for %ss: room=%s heater=%s prev_power=%.1f",
-            int(elapsed),
-            self._room.name if self._room else "unknown",
-            self._device.name,
-            self._state.power,
-        )
-        self._forced_zero = True
-        self._safe_write_ha_state()
+            self.async_write_ha_state()
 
     def _calculate(self, power: float) -> None:
         """Calculate energy consumption since last update."""
@@ -1022,8 +739,7 @@ class XComfortHeaterEnergySensor(RestoreSensor):
     def native_value(self):
         """Return the current value."""
         if self._state and self._state.power is not None:
-            power = 0.0 if self._stale_protection and self._forced_zero else self._state.power
-            self._calculate(power)
+            self._calculate(self._state.power)
             return round(self._consumption, 3)
         return None
 
