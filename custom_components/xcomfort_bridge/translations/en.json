@@ -5,21 +5,38 @@
       "user": {
         "title": "Eaton xComfort Bridge",
         "data": {
-          "ip_address": "Ip Address",
-          "auth_key": "AuthKey",
+          "ip_address": "IP address",
+          "auth_key": "Auth key",
           "identifier": "Identifier"
         }
       },
       "auth": {
         "title": "Eaton xComfort Bridge",
         "data": {
-          "auth_key": "AuthKey",
+          "auth_key": "Auth key",
           "identifier": "Identifier"
         }
       }
     },
     "abort": {
       "no_devices_found": "No Eaton xComfort Bridge devices found on the network."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "sections": {
+          "power_energy_sensors": {
+            "name": "Power/Energy Sensors",
+            "description": "Configure power and energy sensor creation.",
+            "data": {
+              "add_room_power_sensors": "Add power/energy sensors for rooms",
+              "add_heater_power_sensors": "Add power/energy sensors for heaters",
+              "add_light_power_sensors": "Add power/energy sensors for lights"
+            }
+          }
+        }
+      }
     }
   }
 }
