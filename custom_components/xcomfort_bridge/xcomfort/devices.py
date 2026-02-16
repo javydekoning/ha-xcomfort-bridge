@@ -11,7 +11,7 @@ from .device_base import BridgeDevice
 
 # Re-export device classes
 from .device_climate import Heater, RcTouch
-from .device_light import Light
+from .device_light import Appliance, Light
 from .device_rocker import Rocker
 from .device_sensors import DoorSensor, DoorWindowSensor, WindowSensor
 from .device_shade import Shade
@@ -34,6 +34,7 @@ __all__ = [
     "Heater",
     "HeaterState",
     # Device classes
+    "Appliance",
     "Light",
     "LightState",
     "RcTouch",

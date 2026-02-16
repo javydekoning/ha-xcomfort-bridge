@@ -58,3 +58,36 @@ class Light(BridgeDevice):
     __repr__ = __str__
 
 
+class Appliance(BridgeDevice):
+    """Appliance/load device class."""
+
+    def __init__(self, bridge, device_id, name, comp_id=None):
+        """Initialize appliance device."""
+        BridgeDevice.__init__(self, bridge, device_id, name, comp_id)
+
+    def handle_state(self, payload):
+        """Handle appliance state updates."""
+        if "switch" not in payload:
+            _LOGGER.debug("Appliance %s received non-switch payload, ignoring: %s", self.name, payload)
+            return
+
+        switch = payload["switch"]
+        if switch:
+            dimmvalue = payload.get("dimmvalue", 99)
+        else:
+            dimmvalue = self.state.value.dimmvalue if self.state.value is not None else 99
+
+        _LOGGER.debug("Appliance %s state update: switch=%s, dimmvalue=%s", self.name, switch, dimmvalue)
+        self.state.on_next(LightState(switch, dimmvalue, payload))
+
+    async def switch(self, switch: bool):
+        """Switch appliance on/off."""
+        _LOGGER.debug("Switching appliance %s: %s", self.name, "ON" if switch else "OFF")
+        await self.bridge.switch_device(self.device_id, {"switch": switch})
+
+    def __str__(self):
+        """Return string representation of appliance device."""
+        return f'Appliance({self.device_id}, "{self.name}", state:{self.state.value})'
+
+    __repr__ = __str__
+

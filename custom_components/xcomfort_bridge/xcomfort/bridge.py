@@ -11,6 +11,7 @@ from .comp import Comp, CompState  # noqa: F401
 from .connection import SecureBridgeConnection, setup_secure_connection
 from .constants import ClimateMode, ComponentTypes, DeviceTypes, Messages
 from .devices import (
+    Appliance,
     BridgeDevice,
     DoorSensor,
     Heater,
@@ -311,12 +312,16 @@ class Bridge:
             )
 
         if dev_type in (DeviceTypes.ACTUATOR_SWITCH, DeviceTypes.ACTUATOR_DIMM):
-            if payload.get("usage") == 0:
-                # If usage = 1 then it's configured as a "load",
-                # and not as a light.
-                dimmable = payload["dimmable"]
+            usage = payload.get("usage", 0)
+            dimmable = payload.get("dimmable", dev_type == DeviceTypes.ACTUATOR_DIMM)
+
+            if usage == 0:
+                # usage=0 is categorized as a light in xComfort.
                 _LOGGER.debug("Creating Light device (dimmable=%s)", dimmable)
                 return Light(self, device_id, name, dimmable, comp_id)
+            # usage!=0 is categorized as appliance/load in xComfort.
+            _LOGGER.debug("Creating Appliance device (usage=%s)", usage)
+            return Appliance(self, device_id, name, comp_id)
 
         elif dev_type == DeviceTypes.SHADING_ACTUATOR:
             _LOGGER.debug("Creating Shade device")
