@@ -195,7 +195,6 @@ class XComfortEvent(EventEntity):
 
         self._attr_unique_id = f"event_{DOMAIN}_{device.device_id}"
         self._device = device
-        self._has_initialized = False
 
         # xComfort Component = Home Assistant Device
         # Always create/reference a device based on the component
@@ -209,7 +208,7 @@ class XComfortEvent(EventEntity):
 
     async def async_added_to_hass(self) -> None:
         """Run when entity about to be added to hass."""
-        self._device.state.subscribe(self._async_handle_event)
+        self._device.button_state.subscribe(self._async_handle_event)
 
     @callback
     def _async_handle_event(self, state) -> None:
@@ -218,24 +217,14 @@ class XComfortEvent(EventEntity):
         if state is None:
             return
 
-        # Skip the very first state after HA restart
-        if not self._has_initialized:
-            self._has_initialized = True
-            return
+        button_state = bool(state)
 
-        # For momentary rockers, extract the actual button state
         if self._is_momentary:
-            # state is RockerSensorState or bool
-            if hasattr(state, "is_on"):
-                button_state = state.is_on
-            else:
-                button_state = bool(state)
-
             # Emit press_up or press_down events
             self._trigger_event("press_up" if button_state else "press_down")
         else:
             # For toggle rockers, use on/off events
-            self._trigger_event("on" if state else "off")
+            self._trigger_event("on" if button_state else "off")
 
         self.async_write_ha_state()
 
