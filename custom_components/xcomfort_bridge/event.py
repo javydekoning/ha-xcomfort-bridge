@@ -1,6 +1,7 @@
 """Support for xComfort buttons."""
 
 import logging
+import time
 
 from homeassistant.components.event import EventDeviceClass, EventEntity
 from homeassistant.config_entries import ConfigEntry
@@ -8,13 +9,14 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import DOMAIN
+from .const import BUTTON_EVENT, DOMAIN
 from .hub import XComfortHub
 from .xcomfort.comp import Comp
 from .xcomfort.constants import ComponentTypes
 from .xcomfort.devices import RcTouch, Rocker
 
 _LOGGER = logging.getLogger(__name__)
+DOUBLE_PRESS_WINDOW_S = 1.2
 
 # Mapping of component types to their model names
 COMPONENT_TYPE_TO_MODEL = {
@@ -178,7 +180,12 @@ class XComfortEvent(EventEntity):
         self._is_momentary = device.has_sensors or _is_momentary_rocker(comp)
 
         if self._is_momentary:
-            self._attr_event_types = ["press_up", "press_down"]
+            self._attr_event_types = [
+                "press_up",
+                "press_down",
+                "double_press_up",
+                "double_press_down",
+            ]
         else:
             self._attr_event_types = ["on", "off"]
 
@@ -195,6 +202,7 @@ class XComfortEvent(EventEntity):
 
         self._attr_unique_id = f"event_{DOMAIN}_{device.device_id}"
         self._device = device
+        self._last_press_ts: dict[str, float | None] = {"press_up": None, "press_down": None}
 
         # xComfort Component = Home Assistant Device
         # Always create/reference a device based on the component
@@ -220,12 +228,31 @@ class XComfortEvent(EventEntity):
         button_state = bool(state)
 
         if self._is_momentary:
-            # Emit press_up or press_down events
-            self._trigger_event("press_up" if button_state else "press_down")
+            event_type = "press_up" if button_state else "press_down"
+            self._emit_event(event_type)
+            self._emit_double_press(event_type)
         else:
             # For toggle rockers, use on/off events
-            self._trigger_event("on" if button_state else "off")
+            self._emit_event("on" if button_state else "off")
 
+    def _emit_double_press(self, event_type: str) -> None:
+        """Emit direction-specific double press events for momentary buttons."""
+        now = time.monotonic()
+        last_ts = self._last_press_ts.get(event_type)
+        if last_ts is not None and now - last_ts <= DOUBLE_PRESS_WINDOW_S:
+            if event_type == "press_up":
+                self._emit_event("double_press_up")
+            elif event_type == "press_down":
+                self._emit_event("double_press_down")
+            self._last_press_ts[event_type] = None
+        else:
+            self._last_press_ts[event_type] = now
+
+    def _emit_event(self, event_type: str) -> None:
+        """Emit event entity update and fire xComfort bus event for device automations."""
+        self._trigger_event(event_type)
+        if self.entity_id:
+            self.hass.bus.async_fire(BUTTON_EVENT, {"entity_id": self.entity_id, "event_type": event_type})
         self.async_write_ha_state()
 
 
@@ -244,11 +271,17 @@ class XComfortRcTouchEvent(EventEntity):
         """
         self._attr_device_class = EventDeviceClass.BUTTON
         # RcTouch buttons are momentary (press up/down)
-        self._attr_event_types = ["press_up", "press_down"]
+        self._attr_event_types = [
+            "press_up",
+            "press_down",
+            "double_press_up",
+            "double_press_down",
+        ]
         self._attr_has_entity_name = True
         self._attr_name = "Button"
         self._attr_unique_id = f"event_{DOMAIN}_{device.device_id}"
         self._device = device
+        self._last_press_ts: dict[str, float | None] = {"press_up": None, "press_down": None}
 
         # Link to the RcTouch climate device
         self._attr_device_info = DeviceInfo(
@@ -267,8 +300,26 @@ class XComfortRcTouchEvent(EventEntity):
             return
 
         # state is bool (True = pressed/up, False = released/down)
-        button_state = bool(state)
+        event_type = "press_up" if bool(state) else "press_down"
+        self._emit_event(event_type)
+        self._emit_double_press(event_type)
 
-        # Emit press_up or press_down events
-        self._trigger_event("press_up" if button_state else "press_down")
+    def _emit_double_press(self, event_type: str) -> None:
+        """Emit direction-specific double press events for momentary buttons."""
+        now = time.monotonic()
+        last_ts = self._last_press_ts.get(event_type)
+        if last_ts is not None and now - last_ts <= DOUBLE_PRESS_WINDOW_S:
+            if event_type == "press_up":
+                self._emit_event("double_press_up")
+            elif event_type == "press_down":
+                self._emit_event("double_press_down")
+            self._last_press_ts[event_type] = None
+        else:
+            self._last_press_ts[event_type] = now
+
+    def _emit_event(self, event_type: str) -> None:
+        """Emit event entity update and fire xComfort bus event for device automations."""
+        self._trigger_event(event_type)
+        if self.entity_id:
+            self.hass.bus.async_fire(BUTTON_EVENT, {"entity_id": self.entity_id, "event_type": event_type})
         self.async_write_ha_state()

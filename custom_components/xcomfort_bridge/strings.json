@@ -19,5 +19,15 @@
     "abort": {
       "no_devices_found": "No Eaton xComfort Bridge devices found on the network."
     }
+  },
+  "device_automation": {
+    "trigger_type": {
+      "press_up": "\"{subtype}\" press up",
+      "press_down": "\"{subtype}\" press down",
+      "double_press_up": "\"{subtype}\" double press up",
+      "double_press_down": "\"{subtype}\" double press down",
+      "on": "\"{subtype}\" on",
+      "off": "\"{subtype}\" off"
+    }
   }
 }
