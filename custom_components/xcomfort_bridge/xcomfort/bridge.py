@@ -424,7 +424,7 @@ class Bridge:
 
         comp.handle_state(payload)
 
-    def _handle_device_payload(self, payload):
+    def _handle_device_payload(self, payload, emit_button_event: bool = True):
         """Handle device payload."""
         device_id = payload["deviceId"]
 
@@ -438,7 +438,10 @@ class Bridge:
 
             self._add_device(device)
 
-        device.handle_state(payload)
+        if isinstance(device, Rocker):
+            device.handle_state(payload, emit_button_event=emit_button_event)
+        else:
+            device.handle_state(payload)
 
     def _handle_room_payload(self, payload):
         """Handle room payload."""
@@ -495,7 +498,8 @@ class Bridge:
             _LOGGER.debug("Processing %d devices from SET_ALL_DATA", len(payload["devices"]))
             for device_payload in payload["devices"]:
                 try:
-                    self._handle_device_payload(device_payload)
+                    # Initial snapshots must not emit button events.
+                    self._handle_device_payload(device_payload, emit_button_event=False)
                 except (KeyError, ValueError):
                     _LOGGER.exception("Failed to handle device payload: %s", device_payload)
 

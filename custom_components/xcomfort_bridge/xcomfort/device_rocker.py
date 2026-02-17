@@ -1,6 +1,9 @@
 """Rocker device for xComfort integration."""
 
 import logging
+import time
+
+import rx
 
 from .constants import ComponentTypes
 from .device_base import BridgeDevice
@@ -18,6 +21,11 @@ class Rocker(BridgeDevice):
         self.comp_id = comp_id
         self.payload = payload
         self.is_on: bool | None = None
+        # Dedicated stream for button edges only (press/release), used by EventEntity.
+        self.button_state = rx.subject.BehaviorSubject(None)
+        self._last_button_emit_state: bool | None = None
+        self._last_button_emit_ts: float = 0.0
+        self._button_emit_dedupe_window_s: float = 0.25
         self.temperature: float | None = None
         self.humidity: float | None = None
         self._sensor_device = None
@@ -188,10 +196,13 @@ class Rocker(BridgeDevice):
             if "info" in comp_payload:
                 _LOGGER.debug("Rocker %s component info update: %s", self.name, comp_payload["info"])
 
-    def handle_state(self, payload, broadcast: bool = True) -> None:
+    def handle_state(self, payload, broadcast: bool = True, emit_button_event: bool = True) -> None:
         """Handle rocker state updates."""
         self.payload.update(payload)
-        self.is_on = bool(payload["curstate"])
+        button_event_state: bool | None = None
+        if "curstate" in payload:
+            self.is_on = bool(payload["curstate"])
+            button_event_state = self.is_on
 
         # For multisensor rockers, include sensor data in state
         if self.has_sensors:
@@ -214,11 +225,21 @@ class Rocker(BridgeDevice):
             if broadcast:
                 self.state.on_next(self.is_on)
 
+        # Emit button events for each curstate update, but dedupe very fast duplicates.
+        if emit_button_event and button_event_state is not None:
+            now = time.monotonic()
+            is_fast_duplicate = (
+                self._last_button_emit_state == button_event_state
+                and (now - self._last_button_emit_ts) < self._button_emit_dedupe_window_s
+            )
+            if not is_fast_duplicate:
+                self.button_state.on_next(button_event_state)
+                self._last_button_emit_state = button_event_state
+                self._last_button_emit_ts = now
+
     def __str__(self):
         """Return string representation of rocker device."""
         if self.has_sensors:
             return f'Rocker({self.device_id}, "{self.name}", is_on: {self.is_on}, temp: {self.temperature}, humidity: {self.humidity})'
         return f'Rocker({self.device_id}, "{self.name}", is_on: {self.is_on} payload: {self.payload})'
-
-
 
