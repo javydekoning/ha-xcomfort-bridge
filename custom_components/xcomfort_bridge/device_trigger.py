@@ -93,6 +93,26 @@ def _get_entity_trigger_types(
     return valid_types or DEFAULT_TRIGGER_TYPES
 
 
+@callback
+def _get_entity_subtype(hass: HomeAssistant, entry: er.RegistryEntry) -> str:
+    """Return a human-readable subtype label for trigger UI."""
+    if entry.entity_id:
+        state = hass.states.get(entry.entity_id)
+        if state:
+            friendly_name = state.attributes.get("friendly_name")
+            if isinstance(friendly_name, str) and friendly_name.strip():
+                return friendly_name
+
+    if entry.name:
+        return entry.name
+    if entry.original_name:
+        return entry.original_name
+
+    if entry.entity_id:
+        return entry.entity_id.split(".", 1)[1]
+    return entry.unique_id or "button"
+
+
 async def async_validate_trigger_config(
     hass: HomeAssistant, config: ConfigType
 ) -> ConfigType:
@@ -152,7 +172,7 @@ async def async_get_triggers(hass: HomeAssistant, device_id: str) -> list[dict[s
     for entry in entity_entries:
         if not entry.entity_id:
             continue
-        subtype = entry.entity_id.split(".", 1)[1]
+        subtype = _get_entity_subtype(hass, entry)
         for trigger_type in _get_entity_trigger_types(hass, entry.entity_id, entry.capabilities):
             triggers.append(
                 {

@@ -22,12 +22,12 @@
   },
   "device_automation": {
     "trigger_type": {
-      "press_up": "\"{subtype}\" press up",
-      "press_down": "\"{subtype}\" press down",
-      "double_press_up": "\"{subtype}\" double press up",
-      "double_press_down": "\"{subtype}\" double press down",
-      "on": "\"{subtype}\" on",
-      "off": "\"{subtype}\" off"
+      "press_up": "{subtype}: Press up",
+      "press_down": "{subtype}: Press down",
+      "double_press_up": "{subtype}: Double press up",
+      "double_press_down": "{subtype}: Double press down",
+      "on": "{subtype}: On",
+      "off": "{subtype}: Off"
     }
   }
 }

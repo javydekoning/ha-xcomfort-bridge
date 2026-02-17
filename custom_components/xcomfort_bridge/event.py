@@ -1,7 +1,7 @@
 """Support for xComfort buttons."""
 
+import asyncio
 import logging
-import time
 
 from homeassistant.components.event import EventDeviceClass, EventEntity
 from homeassistant.config_entries import ConfigEntry
@@ -16,7 +16,7 @@ from .xcomfort.constants import ComponentTypes
 from .xcomfort.devices import RcTouch, Rocker
 
 _LOGGER = logging.getLogger(__name__)
-DOUBLE_PRESS_WINDOW_S = 1.2
+DOUBLE_PRESS_WINDOW_S = 1.0
 
 # Mapping of component types to their model names
 COMPONENT_TYPE_TO_MODEL = {
@@ -153,7 +153,51 @@ async def async_setup_entry(
     entry.async_create_task(hass, _wait_for_hub_then_setup())
 
 
-class XComfortEvent(EventEntity):
+class XComfortButtonEventBase(EventEntity):
+    """Shared button event behavior for rocker and RcTouch event entities."""
+
+    def _init_button_event_state(self) -> None:
+        """Initialize shared in-memory state for button gesture detection."""
+        self._pending_single_press: dict[str, asyncio.TimerHandle | None] = {"press_up": None, "press_down": None}
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Cancel any pending delayed single-press tasks on entity removal."""
+        for event_type, handle in self._pending_single_press.items():
+            if handle is not None:
+                handle.cancel()
+                self._pending_single_press[event_type] = None
+
+    def _handle_momentary_press(self, event_type: str) -> None:
+        """Emit delayed single press or immediate double press for a direction."""
+        pending_single = self._pending_single_press.get(event_type)
+        if pending_single is not None:
+            # Second press within window: cancel pending single and emit double immediately.
+            pending_single.cancel()
+            self._pending_single_press[event_type] = None
+            if event_type == "press_up":
+                self._emit_event("double_press_up")
+            elif event_type == "press_down":
+                self._emit_event("double_press_down")
+            return
+
+        def _emit_single_press() -> None:
+            self._pending_single_press[event_type] = None
+            self._emit_event(event_type)
+
+        # First press: delay single so a second press can upgrade it to double.
+        self._pending_single_press[event_type] = self.hass.loop.call_later(
+            DOUBLE_PRESS_WINDOW_S, _emit_single_press
+        )
+
+    def _emit_event(self, event_type: str) -> None:
+        """Emit event entity update and fire xComfort bus event for device automations."""
+        self._trigger_event(event_type)
+        if self.entity_id:
+            self.hass.bus.async_fire(BUTTON_EVENT, {"entity_id": self.entity_id, "event_type": event_type})
+        self.async_write_ha_state()
+
+
+class XComfortEvent(XComfortButtonEventBase):
     """Entity class for xComfort event button."""
 
     def __init__(
@@ -202,7 +246,7 @@ class XComfortEvent(EventEntity):
 
         self._attr_unique_id = f"event_{DOMAIN}_{device.device_id}"
         self._device = device
-        self._last_press_ts: dict[str, float | None] = {"press_up": None, "press_down": None}
+        self._init_button_event_state()
 
         # xComfort Component = Home Assistant Device
         # Always create/reference a device based on the component
@@ -229,34 +273,12 @@ class XComfortEvent(EventEntity):
 
         if self._is_momentary:
             event_type = "press_up" if button_state else "press_down"
-            self._emit_event(event_type)
-            self._emit_double_press(event_type)
+            self._handle_momentary_press(event_type)
         else:
             # For toggle rockers, use on/off events
             self._emit_event("on" if button_state else "off")
 
-    def _emit_double_press(self, event_type: str) -> None:
-        """Emit direction-specific double press events for momentary buttons."""
-        now = time.monotonic()
-        last_ts = self._last_press_ts.get(event_type)
-        if last_ts is not None and now - last_ts <= DOUBLE_PRESS_WINDOW_S:
-            if event_type == "press_up":
-                self._emit_event("double_press_up")
-            elif event_type == "press_down":
-                self._emit_event("double_press_down")
-            self._last_press_ts[event_type] = None
-        else:
-            self._last_press_ts[event_type] = now
-
-    def _emit_event(self, event_type: str) -> None:
-        """Emit event entity update and fire xComfort bus event for device automations."""
-        self._trigger_event(event_type)
-        if self.entity_id:
-            self.hass.bus.async_fire(BUTTON_EVENT, {"entity_id": self.entity_id, "event_type": event_type})
-        self.async_write_ha_state()
-
-
-class XComfortRcTouchEvent(EventEntity):
+class XComfortRcTouchEvent(XComfortButtonEventBase):
     """Entity class for xComfort RcTouch button events."""
 
     def __init__(self, hass: HomeAssistant, hub: XComfortHub, device: RcTouch, comp: Comp) -> None:
@@ -281,7 +303,7 @@ class XComfortRcTouchEvent(EventEntity):
         self._attr_name = "Button"
         self._attr_unique_id = f"event_{DOMAIN}_{device.device_id}"
         self._device = device
-        self._last_press_ts: dict[str, float | None] = {"press_up": None, "press_down": None}
+        self._init_button_event_state()
 
         # Link to the RcTouch climate device
         self._attr_device_info = DeviceInfo(
@@ -301,25 +323,4 @@ class XComfortRcTouchEvent(EventEntity):
 
         # state is bool (True = pressed/up, False = released/down)
         event_type = "press_up" if bool(state) else "press_down"
-        self._emit_event(event_type)
-        self._emit_double_press(event_type)
-
-    def _emit_double_press(self, event_type: str) -> None:
-        """Emit direction-specific double press events for momentary buttons."""
-        now = time.monotonic()
-        last_ts = self._last_press_ts.get(event_type)
-        if last_ts is not None and now - last_ts <= DOUBLE_PRESS_WINDOW_S:
-            if event_type == "press_up":
-                self._emit_event("double_press_up")
-            elif event_type == "press_down":
-                self._emit_event("double_press_down")
-            self._last_press_ts[event_type] = None
-        else:
-            self._last_press_ts[event_type] = now
-
-    def _emit_event(self, event_type: str) -> None:
-        """Emit event entity update and fire xComfort bus event for device automations."""
-        self._trigger_event(event_type)
-        if self.entity_id:
-            self.hass.bus.async_fire(BUTTON_EVENT, {"entity_id": self.entity_id, "event_type": event_type})
-        self.async_write_ha_state()
+        self._handle_momentary_press(event_type)
