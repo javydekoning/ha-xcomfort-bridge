@@ -56,5 +56,3 @@ class Light(BridgeDevice):
         return f'Light({self.device_id}, "{self.name}", dimmable: {self.dimmable}, state:{self.state.value})'
 
     __repr__ = __str__
-
-
