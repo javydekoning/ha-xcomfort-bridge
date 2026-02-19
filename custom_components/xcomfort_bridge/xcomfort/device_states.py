@@ -29,6 +29,21 @@ class LightState(DeviceState):
     __repr__ = __str__
 
 
+class SwitchState(DeviceState):
+    """Switch device state."""
+
+    def __init__(self, is_on, payload):
+        """Initialize switch state."""
+        DeviceState.__init__(self, payload)
+        self.is_on = is_on
+
+    def __str__(self):
+        """Return string representation of switch state."""
+        return f"SwitchState({self.is_on})"
+
+    __repr__ = __str__
+
+
 class RcTouchState(DeviceState):
     """RcTouch device state."""
 

@@ -10,6 +10,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .const import DOMAIN
 from .hub import XComfortHub
 from .xcomfort.devices import Appliance
+from .xcomfort.device_states import SwitchState
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -62,6 +63,14 @@ class HASSXComfortSwitch(SwitchEntity):
         if self._state is not None:
             self.schedule_update_ha_state()
 
+    def _set_optimistic_state(self, is_on: bool) -> None:
+        """Set optimistic state after successful command send."""
+        if self._state is None:
+            self._state = SwitchState(is_on, {"switch": is_on})
+        else:
+            self._state.is_on = is_on
+        self.schedule_update_ha_state()
+
     @property
     def device_info(self):
         """Return device information."""
@@ -92,20 +101,16 @@ class HASSXComfortSwitch(SwitchEntity):
     @property
     def is_on(self):
         """Return true if switch is on."""
-        return self._state and self._state.switch
+        return self._state and self._state.is_on
 
     async def async_turn_on(self, **kwargs):
         """Turn the switch on."""
         _LOGGER.debug("Turning appliance switch on: %s", self._name)
         await self._device.switch(True)
-        if self._state is not None:
-            self._state.switch = True
-            self.schedule_update_ha_state()
+        self._set_optimistic_state(True)
 
     async def async_turn_off(self, **kwargs):
         """Turn the switch off."""
         _LOGGER.debug("Turning appliance switch off: %s", self._name)
         await self._device.switch(False)
-        if self._state is not None:
-            self._state.switch = False
-            self.schedule_update_ha_state()
+        self._set_optimistic_state(False)
