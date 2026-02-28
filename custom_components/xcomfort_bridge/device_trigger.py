@@ -12,7 +12,13 @@ from homeassistant.components.device_automation import (
     InvalidDeviceAutomationConfig,
 )
 from homeassistant.components.homeassistant.triggers import event as event_trigger
-from homeassistant.const import CONF_DEVICE_ID, CONF_DOMAIN, CONF_ENTITY_ID, CONF_PLATFORM, CONF_TYPE
+from homeassistant.const import (
+    CONF_DEVICE_ID,
+    CONF_DOMAIN,
+    CONF_ENTITY_ID,
+    CONF_PLATFORM,
+    CONF_TYPE,
+)
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.helpers import config_validation as cv, entity_registry as er
 from homeassistant.helpers.trigger import TriggerActionType, TriggerInfo
@@ -173,16 +179,18 @@ async def async_get_triggers(hass: HomeAssistant, device_id: str) -> list[dict[s
         if not entry.entity_id:
             continue
         subtype = _get_entity_subtype(hass, entry)
-        for trigger_type in _get_entity_trigger_types(hass, entry.entity_id, entry.capabilities):
-            triggers.append(
-                {
-                    CONF_DEVICE_ID: device_id,
-                    CONF_DOMAIN: DOMAIN,
-                    CONF_PLATFORM: "device",
-                    CONF_ENTITY_ID: entry.entity_id,
-                    CONF_TYPE: trigger_type,
-                    CONF_SUBTYPE: subtype,
-                }
+        triggers.extend(
+            {
+                CONF_DEVICE_ID: device_id,
+                CONF_DOMAIN: DOMAIN,
+                CONF_PLATFORM: "device",
+                CONF_ENTITY_ID: entry.entity_id,
+                CONF_TYPE: trigger_type,
+                CONF_SUBTYPE: subtype,
+            }
+            for trigger_type in _get_entity_trigger_types(
+                hass, entry.entity_id, entry.capabilities
             )
+        )
 
     return triggers

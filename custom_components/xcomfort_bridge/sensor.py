@@ -360,7 +360,7 @@ class XComfortPowerSensor(SensorEntity):
         self._attr_unique_id = f"energy_{self._room.room_id}"
         self._unique_id = f"energy_{self._room.room_id}"
         self._state = None
-        self._room.state.subscribe(lambda state: self._state_change(state))
+        self._room.state.subscribe(self._state_change)
 
         device_id = f"room_{DOMAIN}_{hub.identifier}_{room.room_id}"
         self._attr_device_info = DeviceInfo(
@@ -411,7 +411,7 @@ class XComfortEnergySensor(RestoreSensor):
         self._attr_unique_id = f"energy_kwh_{self._room.room_id}"
         self._unique_id = f"energy_kwh_{self._room.room_id}"
         self._state = None
-        self._room.state.subscribe(lambda state: self._state_change(state))
+        self._room.state.subscribe(self._state_change)
         self._updateTime = time.monotonic()
         self._consumption = 0
 
@@ -477,7 +477,7 @@ class XComfortRcTouchTemperatureSensor(SensorEntity):
 
         self.hub = hub
         self._state = None
-        self._device.state.subscribe(lambda state: self._state_change(state))
+        self._device.state.subscribe(self._state_change)
 
         # Link to the climate device
         device_id = f"climate_{DOMAIN}_{hub.identifier}-{device.device_id}"
@@ -522,7 +522,7 @@ class XComfortRcTouchHumiditySensor(SensorEntity):
 
         self.hub = hub
         self._state = None
-        self._device.state.subscribe(lambda state: self._state_change(state))
+        self._device.state.subscribe(self._state_change)
 
         # Link to the climate device
         device_id = f"climate_{DOMAIN}_{hub.identifier}-{device.device_id}"
@@ -567,7 +567,7 @@ class XComfortHeaterTemperatureSensor(SensorEntity):
 
         self.hub = hub
         self._state = None
-        self._device.state.subscribe(lambda state: self._state_change(state))
+        self._device.state.subscribe(self._state_change)
 
         # Create device info for the heater
         device_id = f"heater_{DOMAIN}_{hub.identifier}-{device.device_id}"
@@ -616,7 +616,7 @@ class XComfortHeaterHeatingDemandSensor(SensorEntity):
 
         self.hub = hub
         self._state = None
-        self._device.state.subscribe(lambda state: self._state_change(state))
+        self._device.state.subscribe(self._state_change)
 
         # Link to the same device as the temperature sensor
         device_id = f"heater_{DOMAIN}_{hub.identifier}-{device.device_id}"
@@ -661,7 +661,7 @@ class XComfortHeaterPowerSensor(SensorEntity):
 
         self.hub = hub
         self._state = None
-        self._device.state.subscribe(lambda state: self._state_change(state))
+        self._device.state.subscribe(self._state_change)
 
         # Link to the same device as the temperature sensor
         device_id = f"heater_{DOMAIN}_{hub.identifier}-{device.device_id}"
@@ -707,7 +707,7 @@ class XComfortHeaterEnergySensor(RestoreSensor):
         self._state = None
         self._update_time = time.monotonic()
         self._consumption = 0.0
-        self._device.state.subscribe(lambda state: self._state_change(state))
+        self._device.state.subscribe(self._state_change)
 
         # Link to the same device as the temperature sensor
         device_id = f"heater_{DOMAIN}_{hub.identifier}-{device.device_id}"
@@ -768,7 +768,7 @@ class XComfortLightPowerSensor(SensorEntity):
 
         self.hub = hub
         self._state = None
-        self._device.state.subscribe(lambda state: self._state_change(state))
+        self._device.state.subscribe(self._state_change)
 
         device_id = f"light_{DOMAIN}_{hub.identifier}-{device.device_id}"
         self._attr_device_info = DeviceInfo(
@@ -815,7 +815,7 @@ class XComfortLightEnergySensor(RestoreSensor):
 
         self.hub = hub
         self._state = None
-        self._device.state.subscribe(lambda state: self._state_change(state))
+        self._device.state.subscribe(self._state_change)
         self._update_time = time.monotonic()
         self._consumption = 0.0
 
@@ -892,7 +892,7 @@ class XComfortRockerTemperatureSensor(SensorEntity):
 
         self.hub = hub
         self._state = None
-        self._device.state.subscribe(lambda state: self._state_change(state))
+        self._device.state.subscribe(self._state_change)
 
     def _state_change(self, state):
         should_update = self._state is not None
@@ -947,7 +947,7 @@ class XComfortRockerHumiditySensor(SensorEntity):
 
         self.hub = hub
         self._state = None
-        self._device.state.subscribe(lambda state: self._state_change(state))
+        self._device.state.subscribe(self._state_change)
 
     def _state_change(self, state):
         should_update = self._state is not None
@@ -1015,7 +1015,7 @@ class XComfortRoomSensorBase(SensorEntity):
         self._attr_unique_id = f"room_{key}_{room.room_id}"
         self._attr_icon = icon
         self._state = None
-        room.state.subscribe(lambda state: self._state_change(state))
+        room.state.subscribe(self._state_change)
 
         device_id = f"room_{DOMAIN}_{hub.identifier}_{room.room_id}"
         self._attr_device_info = DeviceInfo(

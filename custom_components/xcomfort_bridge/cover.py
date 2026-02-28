@@ -75,7 +75,7 @@ class HASSXComfortShade(CoverEntity):
         if self._device.state is None:
             _LOGGER.debug("State is null for %s", self._name)  # Changed from f-string
         else:
-            self._device.state.subscribe(lambda state: self._state_change(state))
+            self._device.state.subscribe(self._state_change)
 
     def _state_change(self, state):
         """Handle state changes."""

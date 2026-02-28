@@ -127,7 +127,7 @@ class HASSXComfortRoomClimate(ClimateEntity):
         if self._room.state is None:
             _LOGGER.debug("Room state is null for %s", self._name)
         else:
-            self._room.state.subscribe(lambda state: self._room_state_change(state))
+            self._room.state.subscribe(self._room_state_change)
 
         # Optionally subscribe to sensor device for temperature and humidity if linked
         if self._sensor_device is not None:
@@ -135,7 +135,7 @@ class HASSXComfortRoomClimate(ClimateEntity):
                 _LOGGER.debug("Sensor device state is null for %s", self._name)
             else:
                 _LOGGER.debug("Subscribing to sensor device for room %s", self._name)
-                self._sensor_device.state.subscribe(lambda state: self._sensor_device_state_change(state))
+                self._sensor_device.state.subscribe(self._sensor_device_state_change)
 
     def _room_state_change(self, state):
         """Handle room state changes for climate control.

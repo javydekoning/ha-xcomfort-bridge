@@ -77,7 +77,7 @@ class XComfortDoorWindowSensor(BinarySensorEntity):
 
         """
         if self._device.state is not None:
-            self._device.state.subscribe(lambda state: self._state_change(state))
+            self._device.state.subscribe(self._state_change)
 
     def _state_change(self, state: bool):
         """Handle state changes from the device.

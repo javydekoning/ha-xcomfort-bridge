@@ -91,7 +91,7 @@ class Rocker(BridgeDevice):
                 )
                 self._sensor_device = device
                 # Subscribe to its state updates
-                device.state.subscribe(lambda state: self._on_sensor_device_update(state))
+                device.state.subscribe(self._on_sensor_device_update)
                 return
 
         # Not found yet - will retry on first state update

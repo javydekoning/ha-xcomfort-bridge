@@ -82,7 +82,7 @@ class Bridge:
         # Bridge state (for sensors)
         self.bridge_state = rx.subject.BehaviorSubject(None)
 
-        self.logger = lambda x: _LOGGER.warning(x)
+        self.logger = _LOGGER.warning
 
         _LOGGER.info("Initialized xComfort bridge for %s", ip_address)
 
