@@ -30,15 +30,26 @@ class Light(BridgeDevice):
 
     def handle_state(self, payload):
         """Handle light state updates."""
-        # Only process if this is a switch state update
-        if "switch" not in payload:
-            _LOGGER.debug("Light %s received non-switch payload, ignoring: %s", self.name, payload)
+        prev_state = self.state.value
+        prev_power = getattr(prev_state, "power", None) if prev_state else None
+        merged_raw = dict(prev_state.raw) if prev_state and prev_state.raw else {}
+        merged_raw.update(payload)
+
+        if "switch" not in payload and "power" not in payload and "dimmvalue" not in payload:
+            _LOGGER.debug("Light %s received payload without switch/power/dimmvalue, ignoring: %s", self.name, payload)
             return
 
-        switch = payload["switch"]
+        switch = payload.get("switch", prev_state.switch if prev_state else False)
         dimmvalue = self.interpret_dimmvalue_from_payload(switch, payload)
-        _LOGGER.debug("Light %s state update: switch=%s, dimmvalue=%s", self.name, switch, dimmvalue)
-        self.state.on_next(LightState(switch, dimmvalue, payload))
+
+        power = prev_power
+        if "power" in payload:
+            power = float(payload["power"])
+        elif (not switch) or dimmvalue == 0:
+            power = 0.0
+
+        _LOGGER.debug("Light %s state update: switch=%s, dimmvalue=%s, power=%s", self.name, switch, dimmvalue, power)
+        self.state.on_next(LightState(switch, dimmvalue, power, merged_raw))
 
     async def switch(self, switch: bool):
         """Switch light on/off."""
@@ -56,5 +67,4 @@ class Light(BridgeDevice):
         return f'Light({self.device_id}, "{self.name}", dimmable: {self.dimmable}, state:{self.state.value})'
 
     __repr__ = __str__
-
 

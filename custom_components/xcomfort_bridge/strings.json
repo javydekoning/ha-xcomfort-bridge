@@ -4,14 +4,14 @@
     "step": {
       "user": {
         "data": {
-          "ip_address": "Ip Address",
-          "auth_key": "AuthKey",
+          "ip_address": "IP address",
+          "auth_key": "Auth key",
           "identifier": "Identifier"
         }
       },
       "auth": {
         "data": {
-          "auth_key": "AuthKey",
+          "auth_key": "Auth key",
           "identifier": "Identifier"
         }
       }
@@ -28,6 +28,23 @@
       "double_press_down": "{subtype}: Double press down",
       "on": "{subtype}: On",
       "off": "{subtype}: Off"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "sections": {
+          "power_energy_sensors": {
+            "name": "Power/Energy Sensors",
+            "description": "Configure power and energy sensor creation.",
+            "data": {
+              "add_room_power_sensors": "Add power/energy sensors for rooms",
+              "add_heater_power_sensors": "Add power/energy sensors for heaters",
+              "add_light_power_sensors": "Add power/energy sensors for lights"
+            }
+          }
+        }
+      }
     }
   }
 }
