@@ -1,6 +1,6 @@
 """Constants for the Eaton xComfort Bridge integration."""
 
-DOMAIN = "xcomfort_bridge"
+BUTTON_EVENT = f"{DOMAIN}_button_event"
 CONF_MAC = "mac_address"
 CONF_AUTH_KEY = "auth_key"
 CONF_IDENTIFIER = "identifier"
@@ -10,3 +10,4 @@ CONF_POWER_ENERGY_SECTION = "power_energy_sensors"
 CONF_ADD_ROOM_POWER_SENSORS = "add_room_power_sensors"
 CONF_ADD_HEATER_POWER_SENSORS = "add_heater_power_sensors"
 CONF_ADD_LIGHT_POWER_SENSORS = "add_light_power_sensors"
+DOMAIN = "xcomfort_bridge"
