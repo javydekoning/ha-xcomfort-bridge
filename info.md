@@ -9,6 +9,6 @@ To connect you need to fill in:
 - Auth Key: You find this on the backside of the bridge.
 - Identifier: Lowercase nickname, will default to ip address if not supplied, i put in xcomfort.
 
-# Stale heater readings
+## Stale heater readings
 
 Some heater devices report power infrequently or without explicit "off" updates. If you experience stale power readings, consider using room-level power/energy sensors as the primary source of truth in automations and dashboards.
