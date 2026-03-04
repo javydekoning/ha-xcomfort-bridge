@@ -7,10 +7,20 @@ import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.const import CONF_IP_ADDRESS
+from homeassistant.data_entry_flow import section
 from homeassistant.helpers.device_registry import format_mac
 from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 
-from .const import CONF_AUTH_KEY, CONF_IDENTIFIER, CONF_MAC, DOMAIN
+from .const import (
+    CONF_ADD_HEATER_POWER_SENSORS,
+    CONF_ADD_LIGHT_POWER_SENSORS,
+    CONF_ADD_ROOM_POWER_SENSORS,
+    CONF_AUTH_KEY,
+    CONF_IDENTIFIER,
+    CONF_MAC,
+    CONF_POWER_ENERGY_SECTION,
+    DOMAIN,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -105,3 +115,69 @@ class XComfortBridgeConfigFlow(config_entries.ConfigFlow):
     def title(self) -> str:
         """Return the title of the config entry."""
         return self.data.get(CONF_IDENTIFIER, self.data.get(CONF_MAC, self.data.get(CONF_IP_ADDRESS, "Untitled")))
+
+    @staticmethod
+    def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> config_entries.OptionsFlow:
+        """Return the options flow for this handler."""
+        return XComfortBridgeOptionsFlowHandler(config_entry)
+
+
+class XComfortBridgeOptionsFlowHandler(config_entries.OptionsFlowWithReload):
+    """Handle options flow for Eaton xComfort Bridge."""
+
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        """Initialize options flow."""
+        self._config_entry = config_entry
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Manage the options for the config entry."""
+        if user_input is not None:
+            options = dict(self._config_entry.options)
+            section_options = dict(options.get(CONF_POWER_ENERGY_SECTION, {}))
+            section_options.update(user_input.get(CONF_POWER_ENERGY_SECTION, {}))
+            options[CONF_POWER_ENERGY_SECTION] = _filter_power_section_options(section_options)
+            return self.async_create_entry(title="", data=options)
+
+        options = self._config_entry.options
+        section_options = _filter_power_section_options(options.get(CONF_POWER_ENERGY_SECTION, {}))
+        data_schema = vol.Schema(
+            {
+                vol.Optional(
+                    CONF_POWER_ENERGY_SECTION,
+                    default=section_options,
+                ): section(
+                    vol.Schema(
+                        {
+                            vol.Optional(
+                                CONF_ADD_ROOM_POWER_SENSORS,
+                                default=section_options.get(CONF_ADD_ROOM_POWER_SENSORS, True),
+                            ): bool,
+                            vol.Optional(
+                                CONF_ADD_HEATER_POWER_SENSORS,
+                                default=section_options.get(CONF_ADD_HEATER_POWER_SENSORS, False),
+                            ): bool,
+                            vol.Optional(
+                                CONF_ADD_LIGHT_POWER_SENSORS,
+                                default=section_options.get(CONF_ADD_LIGHT_POWER_SENSORS, False),
+                            ): bool,
+                        }
+                    ),
+                    {"collapsed": False},
+                ),
+            }
+        )
+
+        return self.async_show_form(step_id="init", data_schema=data_schema)
+
+def _filter_power_section_options(options: dict[str, Any]) -> dict[str, Any]:
+    """Return only schema-supported keys for the power/energy section."""
+    if not isinstance(options, dict):
+        return {}
+    allowed_keys = {
+        CONF_ADD_ROOM_POWER_SENSORS,
+        CONF_ADD_HEATER_POWER_SENSORS,
+        CONF_ADD_LIGHT_POWER_SENSORS,
+    }
+    return {key: value for key, value in options.items() if key in allowed_keys}
