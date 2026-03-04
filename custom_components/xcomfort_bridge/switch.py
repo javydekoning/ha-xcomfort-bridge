@@ -9,8 +9,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
 from .hub import XComfortHub
-from .xcomfort.devices import Appliance
 from .xcomfort.device_states import SwitchState
+from .xcomfort.devices import Appliance
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -55,7 +55,7 @@ class HASSXComfortSwitch(SwitchEntity):
         if self._device.state is None:
             _LOGGER.debug("State is null for %s", self._name)
         else:
-            self._device.state.subscribe(lambda state: self._state_change(state))
+            self._device.state.subscribe(self._state_change)
 
     def _state_change(self, state):
         """Handle state changes from the device."""
@@ -66,9 +66,11 @@ class HASSXComfortSwitch(SwitchEntity):
     def _set_optimistic_state(self, is_on: bool) -> None:
         """Set optimistic state after successful command send."""
         if self._state is None:
-            self._state = SwitchState(is_on, {"switch": is_on})
+            self._state = SwitchState(is_on, None, {"switch": is_on})
         else:
             self._state.is_on = is_on
+            if not is_on:
+                self._state.power = 0.0
         self.schedule_update_ha_state()
 
     @property

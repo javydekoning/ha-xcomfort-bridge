@@ -29,6 +29,7 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
+    CONF_ADD_APPLIANCE_POWER_SENSORS,
     CONF_ADD_HEATER_POWER_SENSORS,
     CONF_ADD_LIGHT_POWER_SENSORS,
     CONF_ADD_ROOM_POWER_SENSORS,
@@ -38,7 +39,7 @@ from .const import (
 from .hub import XComfortHub
 from .xcomfort.bridge import Room
 from .xcomfort.constants import ComponentTypes
-from .xcomfort.devices import Heater, Light, RcTouch, Rocker
+from .xcomfort.devices import Appliance, Heater, Light, RcTouch, Rocker
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -56,14 +57,15 @@ def _is_multi_channel_component(comp_type: int) -> bool:
     return comp_type in MULTI_CHANNEL_COMPONENTS
 
 
-def _get_power_sensor_options(entry: ConfigEntry) -> tuple[bool, bool, bool]:
+def _get_power_sensor_options(entry: ConfigEntry) -> tuple[bool, bool, bool, bool]:
     """Return options for power/energy sensor creation."""
     options = entry.options
     section_options = options.get(CONF_POWER_ENERGY_SECTION, {})
     add_room = section_options.get(CONF_ADD_ROOM_POWER_SENSORS, True)
     add_heater = section_options.get(CONF_ADD_HEATER_POWER_SENSORS, False)
     add_light = section_options.get(CONF_ADD_LIGHT_POWER_SENSORS, False)
-    return add_room, add_heater, add_light
+    add_appliance = section_options.get(CONF_ADD_APPLIANCE_POWER_SENSORS, False)
+    return add_room, add_heater, add_light, add_appliance
 
 
 def _remove_power_energy_entities(
@@ -74,6 +76,7 @@ def _remove_power_energy_entities(
     add_room_power_sensors: bool,
     add_heater_power_sensors: bool,
     add_light_power_sensors: bool,
+    add_appliance_power_sensors: bool,
 ) -> None:
     """Remove power/energy entities when options are disabled."""
     entity_registry = er.async_get(hass)
@@ -116,12 +119,21 @@ def _remove_power_energy_entities(
                 light_unique_ids.add(f"energy_{device.name}_{device.device_id}")
         _remove_entities_for_unique_ids(light_unique_ids, "light power/energy")
 
+    if not add_appliance_power_sensors:
+        appliance_unique_ids: set[str] = set()
+        for device in devices:
+            if isinstance(device, Appliance):
+                appliance_unique_ids.add(f"power_{device.name}_{device.device_id}")
+                appliance_unique_ids.add(f"energy_{device.name}_{device.device_id}")
+        _remove_entities_for_unique_ids(appliance_unique_ids, "appliance power/energy")
+
 
 def _build_device_sensors(
     hub: XComfortHub,
     devices: list,
     add_heater_power_sensors: bool,
     add_light_power_sensors: bool,
+    add_appliance_power_sensors: bool,
 ) -> list[SensorEntity]:
     """Create sensors based on devices."""
     sensors: list[SensorEntity] = []
@@ -152,6 +164,10 @@ def _build_device_sensors(
             _LOGGER.debug("Adding power and energy sensors for Light device %s", device.name)
             sensors.append(XComfortLightPowerSensor(hub, device))
             sensors.append(XComfortLightEnergySensor(hub, device))
+        elif isinstance(device, Appliance) and add_appliance_power_sensors:
+            _LOGGER.debug("Adding power and energy sensors for Appliance device %s", device.name)
+            sensors.append(XComfortAppliancePowerSensor(hub, device))
+            sensors.append(XComfortApplianceEnergySensor(hub, device))
         elif isinstance(device, Rocker) and device.has_sensors:
             comp = device.bridge._comps.get(device.comp_id)  # noqa: SLF001
             if not comp:
@@ -228,17 +244,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         add_room_power_sensors,
         add_heater_power_sensors,
         add_light_power_sensors,
+        add_appliance_power_sensors,
     ) = _get_power_sensor_options(entry)
 
     _LOGGER.debug(
-        "Power/energy sensor options: room=%s heater=%s light=%s",
+        "Power/energy sensor options: room=%s heater=%s light=%s appliance=%s",
         add_room_power_sensors,
         add_heater_power_sensors,
         add_light_power_sensors,
+        add_appliance_power_sensors,
     )
 
     if add_light_power_sensors:
         _LOGGER.debug("Light power/energy sensors are enabled in options")
+    if add_appliance_power_sensors:
+        _LOGGER.debug("Appliance power/energy sensors are enabled in options")
 
     # Get IP address from config
     ip = str(entry.data.get(CONF_IP_ADDRESS))
@@ -270,6 +290,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
             add_room_power_sensors,
             add_heater_power_sensors,
             add_light_power_sensors,
+            add_appliance_power_sensors,
         )
 
         sensors = _build_device_sensors(
@@ -277,6 +298,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
             devices,
             add_heater_power_sensors,
             add_light_power_sensors,
+            add_appliance_power_sensors,
         )
 
         _LOGGER.debug("Found %s xcomfort rooms", len(list(rooms)))
@@ -825,6 +847,121 @@ class XComfortLightEnergySensor(RestoreSensor):
             name=device.name,
             manufacturer="Eaton",
             model="xComfort Light",
+            via_device=(DOMAIN, hub.hub_id),
+        )
+
+    async def async_added_to_hass(self) -> None:
+        """Call when entity about to be added to hass."""
+        await super().async_added_to_hass()
+        saved_state = await self.async_get_last_sensor_data()
+        if saved_state and saved_state.native_value is not None:
+            self._consumption = cast("float", saved_state.native_value)
+
+    def _state_change(self, state):
+        should_update = self._state is not None
+        self._state = state
+        if should_update:
+            self.async_write_ha_state()
+
+    def _calculate(self, power: float) -> None:
+        """Calculate energy consumption since last update."""
+        now = time.monotonic()
+        time_diff = now - self._update_time
+        self._consumption += power / 3600 / 1000 * time_diff
+        self._update_time = now
+
+    @property
+    def native_value(self):
+        """Return the current value."""
+        if self._state and getattr(self._state, "power", None) is not None:
+            self._calculate(self._state.power)
+            return round(self._consumption, 3)
+        return None
+
+
+class XComfortAppliancePowerSensor(SensorEntity):
+    """Entity class for xComfort Appliance power sensors."""
+
+    def __init__(self, hub: XComfortHub, device: Appliance):
+        """Initialize the power sensor entity.
+
+        Args:
+            hub: XComfortHub instance
+            device: Appliance device instance
+
+        """
+        self.entity_description = SensorEntityDescription(
+            key="power",
+            device_class=SensorDeviceClass.POWER,
+            native_unit_of_measurement=UnitOfPower.WATT,
+            state_class=SensorStateClass.MEASUREMENT,
+            name="Power",
+        )
+        self._device = device
+        self._attr_name = f"{self._device.name} Power"
+        self._attr_unique_id = f"power_{self._device.name}_{self._device.device_id}"
+
+        self.hub = hub
+        self._state = None
+        self._device.state.subscribe(self._state_change)
+
+        # Link to the same HA device as the switch entity for this appliance.
+        device_id = f"switch_{DOMAIN}_{hub.identifier}-{device.device_id}"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, device_id)},
+            name=device.name,
+            manufacturer="Eaton",
+            model="Other appliance",
+            via_device=(DOMAIN, hub.hub_id),
+        )
+
+    def _state_change(self, state):
+        should_update = self._state is not None
+        self._state = state
+        if should_update:
+            self.async_write_ha_state()
+
+    @property
+    def native_value(self):
+        """Return the current value."""
+        return self._state and getattr(self._state, "power", None)
+
+
+class XComfortApplianceEnergySensor(RestoreSensor):
+    """Entity class for xComfort Appliance energy sensors."""
+
+    def __init__(self, hub: XComfortHub, device: Appliance):
+        """Initialize the energy sensor entity.
+
+        Args:
+            hub: XComfortHub instance
+            device: Appliance device instance
+
+        """
+        self.entity_description = SensorEntityDescription(
+            key="energy",
+            device_class=SensorDeviceClass.ENERGY,
+            native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+            state_class=SensorStateClass.TOTAL_INCREASING,
+            name="Energy",
+        )
+        self._device = device
+        self._attr_name = f"{self._device.name} Energy"
+        self._attr_unique_id = f"energy_{self._device.name}_{self._device.device_id}"
+
+        self.hub = hub
+        self._state = None
+        self._device.state.subscribe(self._state_change)
+        self._update_time = time.monotonic()
+        self._consumption = 0.0
+
+        # Link to the same HA device as the switch entity for this appliance.
+        device_id = f"switch_{DOMAIN}_{hub.identifier}-{device.device_id}"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, device_id)},
+            name=device.name,
+            manufacturer="Eaton",
+            model="Other appliance",
             via_device=(DOMAIN, hub.hub_id),
         )
 

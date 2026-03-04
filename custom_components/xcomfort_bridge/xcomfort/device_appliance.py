@@ -17,13 +17,25 @@ class Appliance(BridgeDevice):
 
     def handle_state(self, payload):
         """Handle appliance state updates."""
-        if "switch" not in payload:
-            _LOGGER.debug("Appliance %s received non-switch payload, ignoring: %s", self.name, payload)
+        prev_state = self.state.value
+        prev_power = getattr(prev_state, "power", None) if prev_state else None
+        merged_raw = dict(prev_state.raw) if prev_state and prev_state.raw else {}
+        merged_raw.update(payload)
+
+        if "switch" not in payload and "power" not in payload:
+            _LOGGER.debug("Appliance %s received payload without switch/power, ignoring: %s", self.name, payload)
             return
 
-        is_on = payload["switch"]
-        _LOGGER.debug("Appliance %s state update: is_on=%s", self.name, is_on)
-        self.state.on_next(SwitchState(is_on, payload))
+        is_on = payload.get("switch", prev_state.is_on if prev_state else False)
+        power = prev_power
+
+        if "power" in payload:
+            power = float(payload["power"])
+        elif not is_on:
+            power = 0.0
+
+        _LOGGER.debug("Appliance %s state update: is_on=%s, power=%s", self.name, is_on, power)
+        self.state.on_next(SwitchState(is_on, power, merged_raw))
 
     async def switch(self, switch: bool):
         """Switch appliance on/off."""
