@@ -12,6 +12,7 @@ from homeassistant.helpers.device_registry import format_mac
 from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 
 from .const import (
+    CONF_ADD_APPLIANCE_POWER_SENSORS,
     CONF_ADD_HEATER_POWER_SENSORS,
     CONF_ADD_LIGHT_POWER_SENSORS,
     CONF_ADD_ROOM_POWER_SENSORS,
@@ -162,6 +163,10 @@ class XComfortBridgeOptionsFlowHandler(config_entries.OptionsFlowWithReload):
                                 CONF_ADD_LIGHT_POWER_SENSORS,
                                 default=section_options.get(CONF_ADD_LIGHT_POWER_SENSORS, False),
                             ): bool,
+                            vol.Optional(
+                                CONF_ADD_APPLIANCE_POWER_SENSORS,
+                                default=section_options.get(CONF_ADD_APPLIANCE_POWER_SENSORS, False),
+                            ): bool,
                         }
                     ),
                     {"collapsed": False},
@@ -179,5 +184,6 @@ def _filter_power_section_options(options: dict[str, Any]) -> dict[str, Any]:
         CONF_ADD_ROOM_POWER_SENSORS,
         CONF_ADD_HEATER_POWER_SENSORS,
         CONF_ADD_LIGHT_POWER_SENSORS,
+        CONF_ADD_APPLIANCE_POWER_SENSORS,
     }
     return {key: value for key, value in options.items() if key in allowed_keys}
