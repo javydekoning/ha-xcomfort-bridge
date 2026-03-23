@@ -385,11 +385,11 @@ class XComfortPowerSensor(SensorEntity):
         self.hub = hub
         self._room = room
         self._attr_name = f"{self._room.name} Power"
-        # Keep legacy unique_id to avoid creating duplicate room power entities
-        # like `sensor.gang_power_2` while the original `sensor.gang_power`
-        # becomes unavailable in the registry.
-        self._attr_unique_id = f"room_power_{self._room.room_id}"
-        self._unique_id = f"room_power_{self._room.room_id}"
+        # Keep the historical prod-compatible unique_id for room power sensors.
+        # Although the name is misleading, changing it creates duplicate
+        # `*_power_2` entities in existing installs.
+        self._attr_unique_id = f"energy_{self._room.room_id}"
+        self._unique_id = f"energy_{self._room.room_id}"
         self._state = None
         init_entity_lifecycle(self)
 
