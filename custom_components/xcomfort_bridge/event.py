@@ -10,6 +10,12 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .const import BUTTON_EVENT, DOMAIN
+from .entity_lifecycle import (
+    async_write_state_safely,
+    init_entity_lifecycle,
+    mark_entity_added,
+    subscribe_observable,
+)
 from .hub import XComfortHub
 from .xcomfort.comp import Comp
 from .xcomfort.constants import ComponentTypes
@@ -158,6 +164,7 @@ class XComfortButtonEventBase(EventEntity):
 
     def _init_button_event_state(self) -> None:
         """Initialize shared in-memory state for button gesture detection."""
+        init_entity_lifecycle(self)
         self._pending_single_press: dict[str, asyncio.TimerHandle | None] = {"press_up": None, "press_down": None}
 
     async def async_will_remove_from_hass(self) -> None:
@@ -194,7 +201,7 @@ class XComfortButtonEventBase(EventEntity):
         self._trigger_event(event_type)
         if self.entity_id:
             self.hass.bus.async_fire(BUTTON_EVENT, {"entity_id": self.entity_id, "event_type": event_type})
-        self.async_write_ha_state()
+        async_write_state_safely(self, "button_state")
 
 
 class XComfortEvent(XComfortButtonEventBase):
@@ -260,7 +267,9 @@ class XComfortEvent(XComfortButtonEventBase):
 
     async def async_added_to_hass(self) -> None:
         """Run when entity about to be added to hass."""
-        self._device.button_state.subscribe(self._async_handle_event)
+        await super().async_added_to_hass()
+        mark_entity_added(self)
+        subscribe_observable(self, self._device.button_state, self._async_handle_event, "button_state")
 
     @callback
     def _async_handle_event(self, state) -> None:
@@ -312,8 +321,10 @@ class XComfortRcTouchEvent(XComfortButtonEventBase):
 
     async def async_added_to_hass(self) -> None:
         """Run when entity about to be added to hass."""
+        await super().async_added_to_hass()
+        mark_entity_added(self)
         # Subscribe to button_state instead of regular state
-        self._device.button_state.subscribe(self._async_handle_event)
+        subscribe_observable(self, self._device.button_state, self._async_handle_event, "button_state")
 
     @callback
     def _async_handle_event(self, state) -> None:

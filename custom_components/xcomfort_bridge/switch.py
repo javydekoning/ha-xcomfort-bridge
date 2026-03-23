@@ -8,6 +8,12 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
+from .entity_lifecycle import (
+    init_entity_lifecycle,
+    mark_entity_added,
+    schedule_state_update_safely,
+    subscribe_observable,
+)
 from .hub import XComfortHub
 from .xcomfort.device_states import SwitchState
 from .xcomfort.devices import Appliance
@@ -48,20 +54,20 @@ class HASSXComfortSwitch(SwitchEntity):
         self._name = device.name
         self._state = None
         self._unique_id = f"switch_{DOMAIN}_{hub.identifier}-{device.device_id}"
+        init_entity_lifecycle(self)
 
     async def async_added_to_hass(self):
         """Run when entity about to be added to hass."""
+        await super().async_added_to_hass()
+        mark_entity_added(self)
         _LOGGER.debug("Added appliance switch to hass %s", self._name)
-        if self._device.state is None:
-            _LOGGER.debug("State is null for %s", self._name)
-        else:
-            self._device.state.subscribe(self._state_change)
+        subscribe_observable(self, self._device.state, self._state_change, "device.state")
 
     def _state_change(self, state):
         """Handle state changes from the device."""
         self._state = state
         if self._state is not None:
-            self.schedule_update_ha_state()
+            schedule_state_update_safely(self, "device.state")
 
     def _set_optimistic_state(self, is_on: bool) -> None:
         """Set optimistic state after successful command send."""

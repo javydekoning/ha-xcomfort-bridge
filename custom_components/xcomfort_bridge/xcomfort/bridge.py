@@ -629,6 +629,13 @@ class Bridge:
                 method(message["payload"])
             except (KeyError, ValueError):
                 _LOGGER.exception("Error handling %s", method_name)
+            except Exception:
+                _LOGGER.exception(
+                    "Unhandled exception while handling %s (message_type=%s, payload=%s)",
+                    method_name,
+                    message_type.name,
+                    message["payload"],
+                )
         else:
             _LOGGER.warning("Received message without payload: %s", message)
 

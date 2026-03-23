@@ -36,6 +36,12 @@ from .const import (
     CONF_POWER_ENERGY_SECTION,
     DOMAIN,
 )
+from .entity_lifecycle import (
+    async_write_state_safely,
+    init_entity_lifecycle,
+    mark_entity_added,
+    subscribe_observable,
+)
 from .hub import XComfortHub
 from .xcomfort.bridge import Room
 from .xcomfort.constants import ComponentTypes
@@ -379,10 +385,13 @@ class XComfortPowerSensor(SensorEntity):
         self.hub = hub
         self._room = room
         self._attr_name = f"{self._room.name} Power"
-        self._attr_unique_id = f"energy_{self._room.room_id}"
-        self._unique_id = f"energy_{self._room.room_id}"
+        # Keep legacy unique_id to avoid creating duplicate room power entities
+        # like `sensor.gang_power_2` while the original `sensor.gang_power`
+        # becomes unavailable in the registry.
+        self._attr_unique_id = f"room_power_{self._room.room_id}"
+        self._unique_id = f"room_power_{self._room.room_id}"
         self._state = None
-        self._room.state.subscribe(self._state_change)
+        init_entity_lifecycle(self)
 
         device_id = f"room_{DOMAIN}_{hub.identifier}_{room.room_id}"
         self._attr_device_info = DeviceInfo(
@@ -393,13 +402,19 @@ class XComfortPowerSensor(SensorEntity):
             via_device=(DOMAIN, hub.hub_id),
         )
 
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to room state after entity attachment."""
+        await super().async_added_to_hass()
+        mark_entity_added(self)
+        subscribe_observable(self, self._room.state, self._state_change, "room.state")
+
     def _state_change(self, state):
         """Handle state changes from the device."""
         should_update = self._state is not None
 
         self._state = state
         if should_update:
-            self.async_write_ha_state()
+            async_write_state_safely(self, "room.state")
 
     @property
     def native_value(self):
@@ -433,7 +448,7 @@ class XComfortEnergySensor(RestoreSensor):
         self._attr_unique_id = f"energy_kwh_{self._room.room_id}"
         self._unique_id = f"energy_kwh_{self._room.room_id}"
         self._state = None
-        self._room.state.subscribe(self._state_change)
+        init_entity_lifecycle(self)
         self._updateTime = time.monotonic()
         self._consumption = 0
 
@@ -452,12 +467,14 @@ class XComfortEnergySensor(RestoreSensor):
         savedstate = await self.async_get_last_sensor_data()
         if savedstate:
             self._consumption = cast("float", savedstate.native_value)
+        mark_entity_added(self)
+        subscribe_observable(self, self._room.state, self._state_change, "room.state")
 
     def _state_change(self, state):
         should_update = self._state is not None
         self._state = state
         if should_update:
-            self.async_write_ha_state()
+            async_write_state_safely(self, "room.state")
 
     def calculate(self, power):
         """Calculate energy consumption since last update."""
@@ -499,7 +516,7 @@ class XComfortRcTouchTemperatureSensor(SensorEntity):
 
         self.hub = hub
         self._state = None
-        self._device.state.subscribe(self._state_change)
+        init_entity_lifecycle(self)
 
         # Link to the climate device
         device_id = f"climate_{DOMAIN}_{hub.identifier}-{device.device_id}"
@@ -507,12 +524,18 @@ class XComfortRcTouchTemperatureSensor(SensorEntity):
             identifiers={(DOMAIN, device_id)},
         )
 
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to device state after entity attachment."""
+        await super().async_added_to_hass()
+        mark_entity_added(self)
+        subscribe_observable(self, self._device.state, self._state_change, "device.state")
+
     def _state_change(self, state):
         should_update = self._state is not None
 
         self._state = state
         if should_update:
-            self.async_write_ha_state()
+            async_write_state_safely(self, "device.state")
 
     @property
     def native_value(self):
@@ -544,7 +567,7 @@ class XComfortRcTouchHumiditySensor(SensorEntity):
 
         self.hub = hub
         self._state = None
-        self._device.state.subscribe(self._state_change)
+        init_entity_lifecycle(self)
 
         # Link to the climate device
         device_id = f"climate_{DOMAIN}_{hub.identifier}-{device.device_id}"
@@ -552,12 +575,18 @@ class XComfortRcTouchHumiditySensor(SensorEntity):
             identifiers={(DOMAIN, device_id)},
         )
 
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to device state after entity attachment."""
+        await super().async_added_to_hass()
+        mark_entity_added(self)
+        subscribe_observable(self, self._device.state, self._state_change, "device.state")
+
     def _state_change(self, state):
         should_update = self._state is not None
 
         self._state = state
         if should_update:
-            self.async_write_ha_state()
+            async_write_state_safely(self, "device.state")
 
     @property
     def native_value(self):
@@ -589,7 +618,7 @@ class XComfortHeaterTemperatureSensor(SensorEntity):
 
         self.hub = hub
         self._state = None
-        self._device.state.subscribe(self._state_change)
+        init_entity_lifecycle(self)
 
         # Create device info for the heater
         device_id = f"heater_{DOMAIN}_{hub.identifier}-{device.device_id}"
@@ -601,12 +630,18 @@ class XComfortHeaterTemperatureSensor(SensorEntity):
             via_device=(DOMAIN, hub.hub_id),
         )
 
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to device state after entity attachment."""
+        await super().async_added_to_hass()
+        mark_entity_added(self)
+        subscribe_observable(self, self._device.state, self._state_change, "device.state")
+
     def _state_change(self, state):
         should_update = self._state is not None
 
         self._state = state
         if should_update:
-            self.async_write_ha_state()
+            async_write_state_safely(self, "device.state")
 
     @property
     def native_value(self):
@@ -638,7 +673,7 @@ class XComfortHeaterHeatingDemandSensor(SensorEntity):
 
         self.hub = hub
         self._state = None
-        self._device.state.subscribe(self._state_change)
+        init_entity_lifecycle(self)
 
         # Link to the same device as the temperature sensor
         device_id = f"heater_{DOMAIN}_{hub.identifier}-{device.device_id}"
@@ -646,12 +681,18 @@ class XComfortHeaterHeatingDemandSensor(SensorEntity):
             identifiers={(DOMAIN, device_id)},
         )
 
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to device state after entity attachment."""
+        await super().async_added_to_hass()
+        mark_entity_added(self)
+        subscribe_observable(self, self._device.state, self._state_change, "device.state")
+
     def _state_change(self, state):
         should_update = self._state is not None
 
         self._state = state
         if should_update:
-            self.async_write_ha_state()
+            async_write_state_safely(self, "device.state")
 
     @property
     def native_value(self):
@@ -683,7 +724,7 @@ class XComfortHeaterPowerSensor(SensorEntity):
 
         self.hub = hub
         self._state = None
-        self._device.state.subscribe(self._state_change)
+        init_entity_lifecycle(self)
 
         # Link to the same device as the temperature sensor
         device_id = f"heater_{DOMAIN}_{hub.identifier}-{device.device_id}"
@@ -691,11 +732,17 @@ class XComfortHeaterPowerSensor(SensorEntity):
             identifiers={(DOMAIN, device_id)},
         )
 
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to device state after entity attachment."""
+        await super().async_added_to_hass()
+        mark_entity_added(self)
+        subscribe_observable(self, self._device.state, self._state_change, "device.state")
+
     def _state_change(self, state):
         should_update = self._state is not None
         self._state = state
         if should_update:
-            self.async_write_ha_state()
+            async_write_state_safely(self, "device.state")
 
     @property
     def native_value(self):
@@ -729,7 +776,7 @@ class XComfortHeaterEnergySensor(RestoreSensor):
         self._state = None
         self._update_time = time.monotonic()
         self._consumption = 0.0
-        self._device.state.subscribe(self._state_change)
+        init_entity_lifecycle(self)
 
         # Link to the same device as the temperature sensor
         device_id = f"heater_{DOMAIN}_{hub.identifier}-{device.device_id}"
@@ -743,12 +790,14 @@ class XComfortHeaterEnergySensor(RestoreSensor):
         saved_state = await self.async_get_last_sensor_data()
         if saved_state and saved_state.native_value is not None:
             self._consumption = cast("float", saved_state.native_value)
+        mark_entity_added(self)
+        subscribe_observable(self, self._device.state, self._state_change, "device.state")
 
     def _state_change(self, state):
         should_update = self._state is not None
         self._state = state
         if should_update:
-            self.async_write_ha_state()
+            async_write_state_safely(self, "device.state")
 
     def _calculate(self, power: float) -> None:
         """Calculate energy consumption since last update."""
@@ -790,7 +839,7 @@ class XComfortLightPowerSensor(SensorEntity):
 
         self.hub = hub
         self._state = None
-        self._device.state.subscribe(self._state_change)
+        init_entity_lifecycle(self)
 
         device_id = f"light_{DOMAIN}_{hub.identifier}-{device.device_id}"
         self._attr_device_info = DeviceInfo(
@@ -801,11 +850,17 @@ class XComfortLightPowerSensor(SensorEntity):
             via_device=(DOMAIN, hub.hub_id),
         )
 
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to device state after entity attachment."""
+        await super().async_added_to_hass()
+        mark_entity_added(self)
+        subscribe_observable(self, self._device.state, self._state_change, "device.state")
+
     def _state_change(self, state):
         should_update = self._state is not None
         self._state = state
         if should_update:
-            self.async_write_ha_state()
+            async_write_state_safely(self, "device.state")
 
     @property
     def native_value(self):
@@ -837,7 +892,7 @@ class XComfortLightEnergySensor(RestoreSensor):
 
         self.hub = hub
         self._state = None
-        self._device.state.subscribe(self._state_change)
+        init_entity_lifecycle(self)
         self._update_time = time.monotonic()
         self._consumption = 0.0
 
@@ -856,12 +911,14 @@ class XComfortLightEnergySensor(RestoreSensor):
         saved_state = await self.async_get_last_sensor_data()
         if saved_state and saved_state.native_value is not None:
             self._consumption = cast("float", saved_state.native_value)
+        mark_entity_added(self)
+        subscribe_observable(self, self._device.state, self._state_change, "device.state")
 
     def _state_change(self, state):
         should_update = self._state is not None
         self._state = state
         if should_update:
-            self.async_write_ha_state()
+            async_write_state_safely(self, "device.state")
 
     def _calculate(self, power: float) -> None:
         """Calculate energy consumption since last update."""
@@ -903,7 +960,7 @@ class XComfortAppliancePowerSensor(SensorEntity):
 
         self.hub = hub
         self._state = None
-        self._device.state.subscribe(self._state_change)
+        init_entity_lifecycle(self)
 
         # Link to the same HA device as the switch entity for this appliance.
         device_id = f"switch_{DOMAIN}_{hub.identifier}-{device.device_id}"
@@ -915,11 +972,17 @@ class XComfortAppliancePowerSensor(SensorEntity):
             via_device=(DOMAIN, hub.hub_id),
         )
 
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to device state after entity attachment."""
+        await super().async_added_to_hass()
+        mark_entity_added(self)
+        subscribe_observable(self, self._device.state, self._state_change, "device.state")
+
     def _state_change(self, state):
         should_update = self._state is not None
         self._state = state
         if should_update:
-            self.async_write_ha_state()
+            async_write_state_safely(self, "device.state")
 
     @property
     def native_value(self):
@@ -951,7 +1014,7 @@ class XComfortApplianceEnergySensor(RestoreSensor):
 
         self.hub = hub
         self._state = None
-        self._device.state.subscribe(self._state_change)
+        init_entity_lifecycle(self)
         self._update_time = time.monotonic()
         self._consumption = 0.0
 
@@ -971,12 +1034,14 @@ class XComfortApplianceEnergySensor(RestoreSensor):
         saved_state = await self.async_get_last_sensor_data()
         if saved_state and saved_state.native_value is not None:
             self._consumption = cast("float", saved_state.native_value)
+        mark_entity_added(self)
+        subscribe_observable(self, self._device.state, self._state_change, "device.state")
 
     def _state_change(self, state):
         should_update = self._state is not None
         self._state = state
         if should_update:
-            self.async_write_ha_state()
+            async_write_state_safely(self, "device.state")
 
     def _calculate(self, power: float) -> None:
         """Calculate energy consumption since last update."""
@@ -1029,14 +1094,20 @@ class XComfortRockerTemperatureSensor(SensorEntity):
 
         self.hub = hub
         self._state = None
-        self._device.state.subscribe(self._state_change)
+        init_entity_lifecycle(self)
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to device state after entity attachment."""
+        await super().async_added_to_hass()
+        mark_entity_added(self)
+        subscribe_observable(self, self._device.state, self._state_change, "device.state")
 
     def _state_change(self, state):
         should_update = self._state is not None
 
         self._state = state
         if should_update:
-            self.async_write_ha_state()
+            async_write_state_safely(self, "device.state")
 
     @property
     def native_value(self):
@@ -1084,14 +1155,20 @@ class XComfortRockerHumiditySensor(SensorEntity):
 
         self.hub = hub
         self._state = None
-        self._device.state.subscribe(self._state_change)
+        init_entity_lifecycle(self)
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to device state after entity attachment."""
+        await super().async_added_to_hass()
+        mark_entity_added(self)
+        subscribe_observable(self, self._device.state, self._state_change, "device.state")
 
     def _state_change(self, state):
         should_update = self._state is not None
 
         self._state = state
         if should_update:
-            self.async_write_ha_state()
+            async_write_state_safely(self, "device.state")
 
     @property
     def native_value(self):
@@ -1152,7 +1229,7 @@ class XComfortRoomSensorBase(SensorEntity):
         self._attr_unique_id = f"room_{key}_{room.room_id}"
         self._attr_icon = icon
         self._state = None
-        room.state.subscribe(self._state_change)
+        init_entity_lifecycle(self)
 
         device_id = f"room_{DOMAIN}_{hub.identifier}_{room.room_id}"
         self._attr_device_info = DeviceInfo(
@@ -1163,12 +1240,18 @@ class XComfortRoomSensorBase(SensorEntity):
             via_device=(DOMAIN, hub.hub_id),
         )
 
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to room state after entity attachment."""
+        await super().async_added_to_hass()
+        mark_entity_added(self)
+        subscribe_observable(self, self._room.state, self._state_change, "room.state")
+
     def _state_change(self, state):
         """Handle state changes from the room."""
         should_update = self._state is not None
         self._state = state
         if should_update:
-            self.async_write_ha_state()
+            async_write_state_safely(self, "room.state")
 
     @property
     def native_value(self):
