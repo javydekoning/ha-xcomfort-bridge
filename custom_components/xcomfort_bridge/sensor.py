@@ -36,6 +36,7 @@ from .const import (
     CONF_POWER_ENERGY_SECTION,
     DOMAIN,
 )
+from .device_info import get_rctouch_device_info
 from .hub import XComfortHub
 from .xcomfort.bridge import Room
 from .xcomfort.constants import ComponentTypes
@@ -501,11 +502,7 @@ class XComfortRcTouchTemperatureSensor(SensorEntity):
         self._state = None
         self._device.state.subscribe(self._state_change)
 
-        # Link to the climate device
-        device_id = f"climate_{DOMAIN}_{hub.identifier}-{device.device_id}"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, device_id)},
-        )
+        self._attr_device_info = get_rctouch_device_info(hub, device)
 
     def _state_change(self, state):
         should_update = self._state is not None
@@ -546,11 +543,7 @@ class XComfortRcTouchHumiditySensor(SensorEntity):
         self._state = None
         self._device.state.subscribe(self._state_change)
 
-        # Link to the climate device
-        device_id = f"climate_{DOMAIN}_{hub.identifier}-{device.device_id}"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, device_id)},
-        )
+        self._attr_device_info = get_rctouch_device_info(hub, device)
 
     def _state_change(self, state):
         should_update = self._state is not None

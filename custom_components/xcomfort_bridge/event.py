@@ -10,6 +10,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .const import BUTTON_EVENT, DOMAIN
+from .device_info import get_rctouch_device_info
 from .hub import XComfortHub
 from .xcomfort.comp import Comp
 from .xcomfort.constants import ComponentTypes
@@ -305,10 +306,7 @@ class XComfortRcTouchEvent(XComfortButtonEventBase):
         self._device = device
         self._init_button_event_state()
 
-        # Link to the RcTouch climate device
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, f"climate_{DOMAIN}_{hub.identifier}-{device.device_id}")},
-        )
+        self._attr_device_info = get_rctouch_device_info(hub, device)
 
     async def async_added_to_hass(self) -> None:
         """Run when entity about to be added to hass."""
