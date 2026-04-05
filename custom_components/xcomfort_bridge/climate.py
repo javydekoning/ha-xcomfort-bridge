@@ -16,6 +16,12 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
+from .entity_lifecycle import (
+    init_entity_lifecycle,
+    mark_entity_added,
+    schedule_state_update_safely,
+    subscribe_observable,
+)
 from .hub import XComfortHub
 from .xcomfort.bridge import Room
 from .xcomfort.constants import ClimateMode, ClimateState, Messages
@@ -123,25 +129,22 @@ class HASSXComfortRoomClimate(ClimateEntity):
         self._last_active_state = ClimateState.HeatingAuto
 
         self._unique_id = f"climate_{DOMAIN}_{hub.identifier}-room_{room.room_id}"
+        init_entity_lifecycle(self)
 
     async def async_added_to_hass(self):
         """Run when entity about to be added to hass."""
+        await super().async_added_to_hass()
+        mark_entity_added(self)
 
         _LOGGER.debug("Added to hass room climate %s", self._name)
 
         # Subscribe to room state for all climate data
-        if self._room.state is None:
-            _LOGGER.debug("Room state is null for %s", self._name)
-        else:
-            self._room.state.subscribe(self._room_state_change)
+        subscribe_observable(self, self._room.state, self._room_state_change, "room.state")
 
         # Optionally subscribe to sensor device for temperature and humidity if linked
         if self._sensor_device is not None:
-            if self._sensor_device.state is None:
-                _LOGGER.debug("Sensor device state is null for %s", self._name)
-            else:
-                _LOGGER.debug("Subscribing to sensor device for room %s", self._name)
-                self._sensor_device.state.subscribe(self._sensor_device_state_change)
+            _LOGGER.debug("Subscribing to sensor device for room %s", self._name)
+            subscribe_observable(self, self._sensor_device.state, self._sensor_device_state_change, "sensor_device.state")
 
     def _room_state_change(self, state):
         """Handle room state changes for climate control.
@@ -172,7 +175,7 @@ class HASSXComfortRoomClimate(ClimateEntity):
 
             _LOGGER.debug("Room state changed %s : %s (ClimateState: %s)", self._name, state, self.rctstate.name)
 
-            self.schedule_update_ha_state()
+            schedule_state_update_safely(self, "room.state")
 
     def _sensor_device_state_change(self, state):
         """Handle sensor device state changes for temperature and humidity.
@@ -193,7 +196,7 @@ class HASSXComfortRoomClimate(ClimateEntity):
                 state.humidity,
             )
 
-            self.schedule_update_ha_state()
+            schedule_state_update_safely(self, "sensor_device.state")
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode):
         """Set new HVAC mode.

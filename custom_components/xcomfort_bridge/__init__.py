@@ -17,6 +17,7 @@ PLATFORMS = [
     Platform.CLIMATE,
     Platform.COVER,
     Platform.LIGHT,
+    Platform.SWITCH,
     Platform.SENSOR,
     Platform.EVENT,
     Platform.SCENE,
