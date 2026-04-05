@@ -1,4 +1,7 @@
-"""Constants module for xComfort integration."""
+"""Constants module for xComfort integration.
+
+Enum values sourced from decompiled xComfort Bridge app v2.4.1.
+"""
 
 from enum import Enum, IntEnum
 
@@ -117,8 +120,8 @@ class Messages(IntEnum):
     SET_HEATING_PROGRAM_ID = 360
     HEATING_PROGRAM_DELETED = 362
     SET_ROOM_HEATING_STATE = 363
-    SET_BRIDGE_STATE = 364  # {'heatingOn': 0, 'lightsOn': 0, 'loadsOn': 0, 'windowsOpen': 0, 'doorsOpen': 0, 'presence': 0, 'shadsClosed': 0, 'wgWaterOff': 0, 'coolingOn': 0, 'power': 141.0, 'tempOutside': -100.0}
-    PUBLISH_MAIN_ELECTRICAL_ENERGY_USAGE = 401  # {'meterId': 49, 'connectionState': 1, 'power': 141}
+    SET_BRIDGE_STATE = 364
+    PUBLISH_MAIN_ELECTRICAL_ENERGY_USAGE = 401
     IDLE = -1
     NACK_INFO_INVALID_ACTION = -98
     NACK_INFO_DEVICE_NOT_DIMMABLE = -99
@@ -141,21 +144,35 @@ class ShadeOperationState(IntEnum):
 
 
 class DeviceTypes(IntEnum):
-    """Device types for xComfort devices."""
+    """Device types reported in device payloads (devType field).
+
+    These identify the functional role of a device within a component.
+    A single component (e.g. a Pushbutton Multisensor) can expose multiple
+    devices with different devTypes (e.g. SWITCH + TEMP_HUMIDITY_SENSOR).
+    """
 
     ACTUATOR_SWITCH = 100
     ACTUATOR_DIMM = 101
     SHADING_ACTUATOR = 102
-    SWITCH = 202
-    ROCKER = 220
+    # Sensor/input device types
+    MOTION_SENSOR = 200       # Push switch channel on sensors
+    ROCKER_SENSOR = 201       # Rocker channel on sensor components
+    SWITCH = 202              # Switch channel (door/window sensors, pushbuttons)
+    ROCKER_BINARY_INPUT = 211 # Rocker on binary input devices (230V / battery)
+    ROCKER = 220              # Rocker channel on actuators & remotes
+    # Temperature & climate
     TEMP_SENSOR = 410
-    HEATING_ACTUATOR = 440
+    ACTUATOR_HEATING = 440
     HEATING_VALVE = 441
-    HEATING_WATER_VALVE = 442
+    ACTUATOR_MULTI_HEATING = 442  # Multi-zone heating actuator (e.g. CHAZ-01/12)
     RC_TOUCH = 450
     TEMP_HUMIDITY_SENSOR = 451
+    ACTUATOR_ROUTER = 460
+    # Water safety
     WATER_GUARD = 497
     WATER_SENSOR = 499
+    # Weather
+    WEATHER_STATION = 510
 
 
 class HeatingTypes(IntEnum):
@@ -170,12 +187,25 @@ class HeatingTypes(IntEnum):
 
 
 class ComponentTypes(IntEnum):
-    """Component types for xComfort devices."""
+    """Component types (compType field).
 
+    A component represents the physical hardware module. Each component
+    exposes one or more devices (see DeviceTypes).
+    """
+
+    VOID_COMP_TYPE = 0
     PUSH_BUTTON_1_CHANNEL = 1
     PUSH_BUTTON_2_CHANNEL = 2
     PUSH_BUTTON_4_CHANNEL = 3
+    BINARY_INPUT_230V = 19
+    BINARY_INPUT_BATTERY = 20
+    TEMPERATURE_SENSOR = 23
+    SHADING_ACTUATOR_LEGACY = 27   # Older shading actuator
+    MOTION_SENSOR = 29
     REMOTE_CONTROL_2_CHANNEL = 48
+    REMOTE_CONTROL_12_CHANNEL = 49
+    ROUTER_ACTUATOR = 52
+    HEATING_VALVE = 65
     MULTI_HEATING_ACTUATOR = 71
     LIGHT_SWITCH_ACTUATOR = 74
     DOOR_WINDOW_SENSOR = 76
@@ -185,16 +215,236 @@ class ComponentTypes(IntEnum):
     BRIDGE = 83
     WATER_GUARD = 84
     WATER_SENSOR = 85
-    SHADING_ACTUATOR = 86
+    SHADING_ACTUATOR = 86          # 2021+ shading actuator
     PUSH_BUTTON_MULTI_SENSOR_1_CHANNEL = 87
     PUSH_BUTTON_MULTI_SENSOR_2_CHANNEL = 88
     PUSH_BUTTON_MULTI_SENSOR_4_CHANNEL = 89
+    WEATHER_STATION = 90
+    # Virtual component types (not physical hardware)
+    SCENE = 1000
+    HEATMODE = 1001
+    BINARY_SENSOR = 1002
+
+
+class DeviceUsage(IntEnum):
+    """Usage classification for switching/dimming actuators.
+
+    Determines how a device is categorized in the app UI and which
+    HA platform should handle it.
+    """
+
+    LIGHT = 0
+    LOAD = 1
+    SUM_HEATING = 2
+    SHADING = 3
+    WATER = 4
+    ROUTING = 5
+    WATER_HEATING = 6
+    VEHICLE_CHARGER = 7
+    HIGH_LOAD_APPLIANCE = 8
+    SUM_COOLING = 21
+    SUM_HEATING_COOLING = 22
+    HEATING = 23
+    COOLING = 24
+    HEATING_COOLING = 25
+    SWITCH_HEATING_COOLING = 26
+    SWITCH_COOLING = 27
+    SWITCH_HEATING = 28
+    BIN_NORMAL = 100
+    BIN_HK_1_CONTACT = 101
+    BIN_HK_2_CONTACTS = 102
+
+
+class InfoType(IntEnum):
+    """State info categories used in SET_STATE_INFO payloads.
+
+    Each device state update carries a type field indicating what kind
+    of sensor data or state change it represents.
+    """
+
+    LIGHTING_STATE = 1
+    APPLIANCE_STATE = 2
+    SHADING_STATE = 3
+    WATER_GUARD_STATE = 4
+    MOTION_SENSOR_STATE = 5
+    WINDOORS_STATE = 6
+    TEMPERATURE = 7
+    HUMIDITY = 8
+    BRIGHTNESS = 9
+    WIND_SPEED = 10
+    RAIN = 11
+    WATER_SENSOR_STATE = 12
+    TIME_PROGRAM = 13
+    POWER = 14
+    ENERGY_TARIFF = 15
+    BINARY_STATE = 16
+    SUN_STATE = 17
+
+
+class TempSensorRole(IntEnum):
+    """Role of a temperature sensor in a climate zone."""
+
+    NOT_USED = 0
+    FLOOR_SENSOR = 1
+    ROOM_SENSOR = 4
+    OUTSIDE_SENSOR = 5
+
+
+class EnergyMeterUsage(IntEnum):
+    """Energy meter usage classification."""
+
+    AREA_TOTAL = 0
+    COMBINED_APPLIANCE = 1
+    EV_CHARGING = 2
+    PV_METER = 3
+    HEATPUMP = 4
+    SPECIAL_APPLIANCE = 5
+    WATER_HEATER = 6
+
+
+class ConnectionRole(IntEnum):
+    """Bridge connection role (master/client topology)."""
+
+    VOID = 0
+    MASTER = 1
+    CLIENT = 2
+
+
+class RemoteConnectionState(IntEnum):
+    """Remote connection state for cloud connectivity."""
+
+    DISABLED = 0
+    ENABLED = 1
+    MASTER = 2
+    CLIENT = 3
+
+
+class ConfigSection(IntEnum):
+    """Configuration sections available in the bridge."""
+
+    ROOMS = 1
+    ACTUATORS_SENSORS = 2
+    TIMERS = 3
+    CLIMATE_FUNCTION = 4
+    SHADING_CONTROL = 5
+    LIGHTING_CONTROL = 6
+    THIRD_PARTY = 7
+    LEAKAGE_STOP = 8
+    USER_MANAGEMENT = 9
+    SCENES = 10
+    BACKUP_RESTORE = 11
+    REMOTE_CONNECTION_NOTIFICATIONS = 12
+    GENERAL_INFO = 13
+    MASTER_CLIENT = 14
+    ENERGY_MGMT = 15
+    INSTALLATION = 16
+
+
+class DeviceCategory(IntEnum):
+    """Device category (actuator vs sensor)."""
+
+    ACTUATOR = 0
+    SENSOR = 1
+
+
+class DimmingProfile(IntEnum):
+    """Dimming profiles for dimming actuators (dp field).
+
+    Controls the dimming curve used by the actuator.
+    """
+
+    ON_OFF_ONLY = 1351
+    RLC_STANDARD = 1361
+    LED_1 = 1362
+    LED_2 = 1363
+    LED_3 = 1364
+    CFL_ESL = 1365
+    LED_4 = 1366
+    LED_5 = 1367
+    LED_6 = 1368
+    LED_7 = 1369
+    LINEAR_0_10V = 1370
+    LINEAR_1_10V = 1371
+    LOG_0_10V = 1372
+    LOG_1_10V = 1373
+    LED_LOW = 1374
+    LED_MID = 1375
+    LED_HIGH = 1376
+
+
+class ComponentMode(IntEnum):
+    """Operating modes for components (mode field).
+
+    Different component types use different subsets of modes.
+    Binary inputs (19/20): 1302-1305
+    Switching actuators (74): 1306-1307
+    Door/window sensors (76): 1308-1311
+    """
+
+    # Binary input / dimming actuator modes
+    MODE_PUSHBUTTON = 1302
+    MODE_SWITCH = 1303
+    MODE_PUSHBUTTON_SWITCH = 1304
+    MODE_ROCKER = 1305
+    # Switching actuator modes
+    SA_MODE_PUSHBUTTON = 1306
+    SA_MODE_SWITCH = 1307
+    # Door/window sensor modes
+    WINDOW_ON_CLOSED = 1308
+    WINDOW_ON_OPENED = 1309
+    DOOR_ON_CLOSED = 1310
+    DOOR_ON_OPENED = 1311
 
 
 class DeviceStateUpdateText(IntEnum):
-    """Device types for xComfort devices."""
+    """Text IDs used in device info/state update payloads.
 
-    DEVICE_TEMPERATURE = 1109
-    AMBIENT_TEMPERATURE = 1222
-    HUMIDITY = 1223
-    DIMM_VALUE = 1225
+    These numeric codes appear in the 'text' field of info items
+    and correspond to i18n translation keys.
+    """
+
+    # Error / status
+    SENSOR_OVERFLOW = 1100
+    STATE_UNKNOWN = 1101
+    TROUBLED = 1102
+    LOCKED = 1103
+    BLINKING = 1104
+    OVERTEMPERATURE = 1105
+    OVERLOAD = 1106
+    LOAD_ERROR = 1107
+    SIGNAL_STRENGTH = 1108       # -{{value}}dBm
+    DEVICE_TEMPERATURE = 1109    # {{value}}°C
+    POWER = 1110                 # {{value}}W
+    SIGNAL_QUALITY = 1111
+    NOT_CONFIGURED = 1112
+    # Battery levels
+    BATTERY_EMPTY = 1113
+    BATTERY_WEAK = 1114
+    BATTERY_MEDIUM = 1115
+    BATTERY_GOOD = 1116
+    BATTERY_FULL = 1117
+    BATTERY_UNKNOWN = 1118
+    MAINS_POWERED = 1119
+    EXTERNAL_CONNECTIONS = 1120  # {{value}} connections
+    # Sensor values
+    PERCENTAGE = 1121            # {{value}}% (valve, etc.)
+    # Ambient sensors
+    AMBIENT_TEMPERATURE = 1222   # {{value}}°C
+    HUMIDITY = 1223              # {{value}}%
+    PT1000_TEMPERATURE = 1224    # PT1000: {{value}}°C
+    VALVE_POSITION = 1225        # Valve: {{value}}% (also used as heating demand)
+    DIMM_VALUE = VALVE_POSITION   # Backward-compat alias
+    POWER_ALT = 1226             # {{value}}W (alternative)
+    SUM_REQUEST = 1227
+    NOT_CONFIGURED_ALT = 1228
+    # Weather station
+    WIND_SPEED = 1240            # {{value}}m/s
+    RAIN = 1241                  # Rain
+    NO_RAIN = 1242               # No Rain
+    BRIGHTNESS = 1243            # {{value}} (lux)
+    # Shading
+    POSITION = 1132              # Position: {{value}}
+    CALIBRATION_NEEDED = 1133
+    # Motion
+    MOTION = 1125
+    NO_MOTION = 1126

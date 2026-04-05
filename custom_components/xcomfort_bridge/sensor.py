@@ -42,6 +42,7 @@ from .entity_lifecycle import (
     mark_entity_added,
     subscribe_observable,
 )
+from .device_info import get_rctouch_device_info
 from .hub import XComfortHub
 from .xcomfort.bridge import Room
 from .xcomfort.constants import ComponentTypes
@@ -518,11 +519,7 @@ class XComfortRcTouchTemperatureSensor(SensorEntity):
         self._state = None
         init_entity_lifecycle(self)
 
-        # Link to the climate device
-        device_id = f"climate_{DOMAIN}_{hub.identifier}-{device.device_id}"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, device_id)},
-        )
+        self._attr_device_info = get_rctouch_device_info(hub, device)
 
     async def async_added_to_hass(self) -> None:
         """Subscribe to device state after entity attachment."""
@@ -569,11 +566,7 @@ class XComfortRcTouchHumiditySensor(SensorEntity):
         self._state = None
         init_entity_lifecycle(self)
 
-        # Link to the climate device
-        device_id = f"climate_{DOMAIN}_{hub.identifier}-{device.device_id}"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, device_id)},
-        )
+        self._attr_device_info = get_rctouch_device_info(hub, device)
 
     async def async_added_to_hass(self) -> None:
         """Subscribe to device state after entity attachment."""

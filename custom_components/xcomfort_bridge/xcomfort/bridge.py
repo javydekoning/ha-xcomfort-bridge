@@ -327,7 +327,7 @@ class Bridge:
             _LOGGER.debug("Creating Shade device")
             return Shade(self, device_id, name, comp_id, payload)
 
-        elif dev_type == DeviceTypes.HEATING_ACTUATOR:
+        elif dev_type == DeviceTypes.ACTUATOR_HEATING:
             _LOGGER.debug("Creating Heater device")
             return Heater(self, device_id, name, comp_id)
 
