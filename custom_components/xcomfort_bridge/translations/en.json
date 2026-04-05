@@ -42,7 +42,8 @@
             "data": {
               "add_room_power_sensors": "Add power/energy sensors for rooms",
               "add_heater_power_sensors": "Add power/energy sensors for heaters",
-              "add_light_power_sensors": "Add power/energy sensors for lights"
+              "add_light_power_sensors": "Add power/energy sensors for lights",
+              "add_appliance_power_sensors": "Add power/energy sensors for appliances"
             }
           }
         }

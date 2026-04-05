@@ -10,6 +10,7 @@ from this single module while the implementation is split across multiple files.
 from .device_base import BridgeDevice
 
 # Re-export device classes
+from .device_appliance import Appliance
 from .device_climate import Heater, RcTouch
 from .device_light import Light
 from .device_rocker import Rocker
@@ -22,6 +23,7 @@ from .device_states import (
     RcTouchState,
     RockerSensorState,
     ShadeState,
+    SwitchState,
 )
 
 __all__ = [
@@ -34,6 +36,7 @@ __all__ = [
     "Heater",
     "HeaterState",
     # Device classes
+    "Appliance",
     "Light",
     "LightState",
     "RcTouch",
@@ -42,5 +45,6 @@ __all__ = [
     "RockerSensorState",
     "Shade",
     "ShadeState",
+    "SwitchState",
     "WindowSensor",
 ]
