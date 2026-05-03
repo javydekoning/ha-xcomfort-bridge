@@ -7,7 +7,7 @@ Eaton xComfort integration with Home Assistant. Note that you need the **xComfor
 ✅ for "Yes, "❌ for "No" or ⚠️ for "Partial" functionality.
 
 | Device                          | Device Type    | Tested | Functional |
-| ------------------------------- | -------------- | ------ | ---------- |
+|---------------------------------|----------------|--------|------------|
 | Push Button 1-Fold              | CTAA-01/04     | YES    | YES        |
 | Push Button 2-Fold              | CTAA-02/04     | YES    | YES        |
 | Push Button 4-Fold              | CTAA-04/04     | YES    | YES        |
@@ -35,7 +35,7 @@ From HACS
 
 This repo is a (detached) fork of [jankrib/ha-xcomfort-bridge](https://github.com/jankrib/ha-xcomfort-bridge).
 
-## Contributing & development.
+## Contributing & development
 
 1. Create a parent dir (e.g. `~/xcomfort`)
 2. Clone (your fork) of this repo. (e.g. `git clone git@github.com:javydekoning/ha-xcomfort-bridge.git -b dev`)
@@ -54,7 +54,10 @@ logger:
 6. Run the linter before opening PR!
 
 ```bash
+# Ruff
 uvx ruff check --config .github/linters/.ruff.toml --fix
+# Megalinter
+npx mega-linter-runner --fix
 ```
 
 ## Using events in automations

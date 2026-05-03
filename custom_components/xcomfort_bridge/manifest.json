@@ -1,12 +1,7 @@
 {
   "domain": "xcomfort_bridge",
   "name": "Eaton xComfort Bridge",
-  "codeowners": [
-    "@alexbrasetvik",
-    "@eliasdjup",
-    "@jankrib",
-    "@javydekoning"
-  ],
+  "codeowners": ["@alexbrasetvik", "@eliasdjup", "@jankrib", "@javydekoning"],
   "config_flow": true,
   "dependencies": [],
   "dhcp": [
@@ -22,11 +17,8 @@
   "integration_type": "hub",
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/javydekoning/ha-xcomfort-bridge/issues",
-  "requirements": [
-    "rx==3.2.0",
-    "pycryptodome==3.23.0"
-  ],
+  "requirements": ["rx==3.2.0", "pycryptodome==3.23.0"],
   "ssdp": [],
-  "version": "0.7.0-beta5",
+  "version": "0.7.0",
   "zeroconf": []
 }
