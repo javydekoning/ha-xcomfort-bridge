@@ -435,9 +435,8 @@ class HASSXComfortRoomClimate(ClimateEntity):
     @property
     def hvac_modes(self):
         """Return available HVAC modes."""
-        modes = [HVACMode.OFF, HVACMode.HEAT]
         # TODO: detect cooling capability from room config and add HVACMode.COOL
-        return modes
+        return [HVACMode.OFF, HVACMode.HEAT]
 
     @property
     def hvac_mode(self):
