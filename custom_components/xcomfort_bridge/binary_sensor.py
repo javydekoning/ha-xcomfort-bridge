@@ -1,4 +1,5 @@
 """Binary sensor platform for xComfort integration with Home Assistant."""
+
 import logging
 
 from homeassistant.components.binary_sensor import (
@@ -23,7 +24,9 @@ _LOGGER = logging.getLogger(__name__)
 x = 123
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
+async def async_setup_entry(
+    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
+) -> None:
     """Set up xComfort binary sensors from a config entry.
 
     Args:
@@ -85,7 +88,9 @@ class XComfortDoorWindowSensor(BinarySensorEntity):
         """
         await super().async_added_to_hass()
         mark_entity_added(self)
-        subscribe_observable(self, self._device.state, self._state_change, "device.state")
+        subscribe_observable(
+            self, self._device.state, self._state_change, "device.state"
+        )
 
     def _state_change(self, state: bool):
         """Handle state changes from the device.

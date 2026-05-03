@@ -20,7 +20,14 @@ _LOGGER = logging.getLogger(__name__)
 class XComfortHub:
     """Hub wrapper for xComfort bridge communication."""
 
-    def __init__(self, hass: HomeAssistant, identifier: str, ip: str, auth_key: str, entry: ConfigEntry):
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        identifier: str,
+        ip: str,
+        auth_key: str,
+        entry: ConfigEntry,
+    ):
         """Initialize underlying bridge."""
         bridge = Bridge(ip, auth_key)
         self.hass = hass

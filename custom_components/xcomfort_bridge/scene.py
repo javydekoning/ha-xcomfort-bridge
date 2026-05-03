@@ -19,7 +19,9 @@ from .xcomfort.scene import Scene as XComfortScene
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
+async def async_setup_entry(
+    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
+) -> None:
     """Set up xComfort scenes."""
     hub = XComfortHub.get_hub(hass, entry)
 
@@ -62,7 +64,9 @@ class HASSXComfortScene(HA_SceneEntity):
 
     async def async_activate(self, **kwargs) -> None:
         """Activate the scene."""
-        _LOGGER.debug("Activating scene %s (id=%s)", self._scene.name, self._scene.scene_id)
+        _LOGGER.debug(
+            "Activating scene %s (id=%s)", self._scene.name, self._scene.scene_id
+        )
         await self._scene.activate()
 
     @property

@@ -96,6 +96,42 @@ class HeaterState(DeviceState):
     __repr__ = __str__
 
 
+class HeatingValveState(DeviceState):
+    """Heating valve device state."""
+
+    def __init__(
+        self, ambient_temperature, device_temperature, valve_position, power, payload
+    ):
+        """Initialize heating valve state."""
+        DeviceState.__init__(self, payload)
+        self.ambient_temperature = ambient_temperature
+        self.device_temperature = device_temperature
+        self.valve_position = valve_position
+        self.power = power
+
+    @property
+    def temperature(self):
+        """Alias for ambient_temperature (climate.py compatibility)."""
+        return self.ambient_temperature
+
+    @property
+    def humidity(self):
+        """Return None — heating valves don't measure humidity."""
+        return None
+
+    def __str__(self):
+        """Return string representation of heating valve state."""
+        return (
+            f"HeatingValveState("
+            f"ambient_temp={self.ambient_temperature}°C, "
+            f"device_temp={self.device_temperature}°C, "
+            f"valve={self.valve_position}%, "
+            f"power={self.power}W)"
+        )
+
+    __repr__ = __str__
+
+
 class ShadeState(DeviceState):
     """Shade device state."""
 

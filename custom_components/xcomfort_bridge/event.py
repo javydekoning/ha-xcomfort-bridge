@@ -10,13 +10,13 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .const import BUTTON_EVENT, DOMAIN
+from .device_info import get_rctouch_device_info
 from .entity_lifecycle import (
     async_write_state_safely,
     init_entity_lifecycle,
     mark_entity_added,
     subscribe_observable,
 )
-from .device_info import get_rctouch_device_info
 from .hub import XComfortHub
 from .xcomfort.comp import Comp
 from .xcomfort.constants import ComponentTypes
@@ -72,7 +72,9 @@ def _is_momentary_rocker(comp: Comp) -> bool:
 
 
 async def async_setup_entry(
-    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddConfigEntryEntitiesCallback
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up xComfort event devices."""
     hub = XComfortHub.get_hub(hass, entry)
@@ -99,11 +101,17 @@ async def async_setup_entry(
             component_devices = [
                 device
                 for device in hub.devices
-                if isinstance(device, Rocker) and hasattr(device, "comp_id") and device.comp_id == comp.comp_id
+                if isinstance(device, Rocker)
+                and hasattr(device, "comp_id")
+                and device.comp_id == comp.comp_id
             ]
 
             if not component_devices:
-                _LOGGER.warning("Component %s (type: %s) has no rocker devices, skipping", comp.name, comp.comp_type)
+                _LOGGER.warning(
+                    "Component %s (type: %s) has no rocker devices, skipping",
+                    comp.name,
+                    comp.comp_type,
+                )
                 continue
 
             # Sort by device_id to ensure consistent ordering
@@ -127,7 +135,9 @@ async def async_setup_entry(
                         button_number,
                         comp.name,
                     )
-                    event = XComfortEvent(hass, hub, rocker, comp, button_number=button_number)
+                    event = XComfortEvent(
+                        hass, hub, rocker, comp, button_number=button_number
+                    )
                     events.append(event)
             else:
                 # Single channel device
@@ -166,7 +176,10 @@ class XComfortButtonEventBase(EventEntity):
     def _init_button_event_state(self) -> None:
         """Initialize shared in-memory state for button gesture detection."""
         init_entity_lifecycle(self)
-        self._pending_single_press: dict[str, asyncio.TimerHandle | None] = {"press_up": None, "press_down": None}
+        self._pending_single_press: dict[str, asyncio.TimerHandle | None] = {
+            "press_up": None,
+            "press_down": None,
+        }
 
     async def async_will_remove_from_hass(self) -> None:
         """Cancel any pending delayed single-press tasks on entity removal."""
@@ -201,7 +214,9 @@ class XComfortButtonEventBase(EventEntity):
         """Emit event entity update and fire xComfort bus event for device automations."""
         self._trigger_event(event_type)
         if self.entity_id:
-            self.hass.bus.async_fire(BUTTON_EVENT, {"entity_id": self.entity_id, "event_type": event_type})
+            self.hass.bus.async_fire(
+                BUTTON_EVENT, {"entity_id": self.entity_id, "event_type": event_type}
+            )
         async_write_state_safely(self, "button_state")
 
 
@@ -270,7 +285,9 @@ class XComfortEvent(XComfortButtonEventBase):
         """Run when entity about to be added to hass."""
         await super().async_added_to_hass()
         mark_entity_added(self)
-        subscribe_observable(self, self._device.button_state, self._async_handle_event, "button_state")
+        subscribe_observable(
+            self, self._device.button_state, self._async_handle_event, "button_state"
+        )
 
     @callback
     def _async_handle_event(self, state) -> None:
@@ -288,10 +305,13 @@ class XComfortEvent(XComfortButtonEventBase):
             # For toggle rockers, use on/off events
             self._emit_event("on" if button_state else "off")
 
+
 class XComfortRcTouchEvent(XComfortButtonEventBase):
     """Entity class for xComfort RcTouch button events."""
 
-    def __init__(self, hass: HomeAssistant, hub: XComfortHub, device: RcTouch, comp: Comp) -> None:
+    def __init__(
+        self, hass: HomeAssistant, hub: XComfortHub, device: RcTouch, comp: Comp
+    ) -> None:
         """Initialize the RcTouch Event entity.
 
         Args:
@@ -322,7 +342,9 @@ class XComfortRcTouchEvent(XComfortButtonEventBase):
         await super().async_added_to_hass()
         mark_entity_added(self)
         # Subscribe to button_state instead of regular state
-        subscribe_observable(self, self._device.button_state, self._async_handle_event, "button_state")
+        subscribe_observable(
+            self, self._device.button_state, self._async_handle_event, "button_state"
+        )
 
     @callback
     def _async_handle_event(self, state) -> None:

@@ -22,7 +22,9 @@ from .xcomfort.devices import Light
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
+async def async_setup_entry(
+    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
+) -> None:
     """Set up xComfort light devices."""
     hub = XComfortHub.get_hub(hass, entry)
 
@@ -66,7 +68,9 @@ class HASSXComfortLight(LightEntity):
         self._state = None
         self.device_id = device.device_id
         self._unique_id = f"light_{DOMAIN}_{hub.identifier}-{device.device_id}"
-        self._color_mode = ColorMode.BRIGHTNESS if self._device.dimmable else ColorMode.ONOFF
+        self._color_mode = (
+            ColorMode.BRIGHTNESS if self._device.dimmable else ColorMode.ONOFF
+        )
         init_entity_lifecycle(self)
 
     async def async_added_to_hass(self):
@@ -74,7 +78,9 @@ class HASSXComfortLight(LightEntity):
         await super().async_added_to_hass()
         mark_entity_added(self)
         _LOGGER.debug("Added to hass %s", self._name)
-        subscribe_observable(self, self._device.state, self._state_change, "device.state")
+        subscribe_observable(
+            self, self._device.state, self._state_change, "device.state"
+        )
 
     def _state_change(self, state):
         """Handle state changes from the device."""

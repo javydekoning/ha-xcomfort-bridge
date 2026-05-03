@@ -23,7 +23,11 @@ class Appliance(BridgeDevice):
         merged_raw.update(payload)
 
         if "switch" not in payload and "power" not in payload:
-            _LOGGER.debug("Appliance %s received payload without switch/power, ignoring: %s", self.name, payload)
+            _LOGGER.debug(
+                "Appliance %s received payload without switch/power, ignoring: %s",
+                self.name,
+                payload,
+            )
             return
 
         is_on = payload.get("switch", prev_state.is_on if prev_state else False)
@@ -34,12 +38,16 @@ class Appliance(BridgeDevice):
         elif not is_on:
             power = 0.0
 
-        _LOGGER.debug("Appliance %s state update: is_on=%s, power=%s", self.name, is_on, power)
+        _LOGGER.debug(
+            "Appliance %s state update: is_on=%s, power=%s", self.name, is_on, power
+        )
         self.state.on_next(SwitchState(is_on, power, merged_raw))
 
     async def switch(self, switch: bool):
         """Switch appliance on/off."""
-        _LOGGER.debug("Switching appliance %s: %s", self.name, "ON" if switch else "OFF")
+        _LOGGER.debug(
+            "Switching appliance %s: %s", self.name, "ON" if switch else "OFF"
+        )
         await self.bridge.switch_device(self.device_id, {"switch": switch})
 
     def __str__(self):

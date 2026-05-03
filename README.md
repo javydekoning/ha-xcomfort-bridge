@@ -17,6 +17,7 @@ Eaton xComfort integration with Home Assistant. Note that you need the **xComfor
 | Remote Control 2-Channel (mini) | CHSZ-02/02     | YES    | YES        |
 | Switching Plug                  | CSAP-01/F5-12E | YES    | No         |
 | Heating Actuator                | CHAU-01/01-10E | YES    | YES        |
+| Heating Valve                   | CHVZ-01/05     | YES    | YES        |
 
 **CSAP-01/F5-12E** is not reporting power consumption frequently enough to be reliable. Recommend to use Shelly or similar instead.
 

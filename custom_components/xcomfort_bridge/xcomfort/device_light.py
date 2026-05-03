@@ -35,8 +35,16 @@ class Light(BridgeDevice):
         merged_raw = dict(prev_state.raw) if prev_state and prev_state.raw else {}
         merged_raw.update(payload)
 
-        if "switch" not in payload and "power" not in payload and "dimmvalue" not in payload:
-            _LOGGER.debug("Light %s received payload without switch/power/dimmvalue, ignoring: %s", self.name, payload)
+        if (
+            "switch" not in payload
+            and "power" not in payload
+            and "dimmvalue" not in payload
+        ):
+            _LOGGER.debug(
+                "Light %s received payload without switch/power/dimmvalue, ignoring: %s",
+                self.name,
+                payload,
+            )
             return
 
         switch = payload.get("switch", prev_state.switch if prev_state else False)
@@ -48,7 +56,13 @@ class Light(BridgeDevice):
         elif (not switch) or dimmvalue == 0:
             power = 0.0
 
-        _LOGGER.debug("Light %s state update: switch=%s, dimmvalue=%s, power=%s", self.name, switch, dimmvalue, power)
+        _LOGGER.debug(
+            "Light %s state update: switch=%s, dimmvalue=%s, power=%s",
+            self.name,
+            switch,
+            dimmvalue,
+            power,
+        )
         self.state.on_next(LightState(switch, dimmvalue, power, merged_raw))
 
     async def switch(self, switch: bool):

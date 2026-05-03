@@ -42,9 +42,7 @@ class RoomState:
 
     def __str__(self):
         """Return string representation of room state."""
-        return (
-            f"RoomState({self.setpoint}, {self.temperature}, {self.humidity},{self.mode},{self.rctstate} {self.power})"
-        )
+        return f"RoomState({self.setpoint}, {self.temperature}, {self.humidity},{self.mode},{self.rctstate} {self.power})"
 
     __repr__ = __str__
 
@@ -81,7 +79,9 @@ class Room:
                 try:
                     mode = ClimateMode(mode_value)
                 except ValueError:
-                    _LOGGER.warning("Room %s: Invalid currentMode value: %s", self.name, mode_value)
+                    _LOGGER.warning(
+                        "Room %s: Invalid currentMode value: %s", self.name, mode_value
+                    )
                     mode = ClimateMode.Unknown
         if "mode" in payload:  # When handling from _SET_STATE_INFO
             mode_value = payload.get("mode")
@@ -89,15 +89,21 @@ class Room:
                 try:
                     mode = ClimateMode(mode_value)
                 except ValueError:
-                    _LOGGER.warning("Room %s: Invalid mode value: %s", self.name, mode_value)
+                    _LOGGER.warning(
+                        "Room %s: Invalid mode value: %s", self.name, mode_value
+                    )
                     mode = ClimateMode.Unknown
 
         # When handling from _SET_ALL_DATA, we get the setpoints for each mode/preset
         # Store these for later use
         if "modes" in payload:
             for mode_data in payload["modes"]:
-                self.modesetpoints[ClimateMode(mode_data["mode"])] = float(mode_data["value"])
-            _LOGGER.debug("Room %s: Loaded mode setpoints: %s", self.name, self.modesetpoints)
+                self.modesetpoints[ClimateMode(mode_data["mode"])] = float(
+                    mode_data["value"]
+                )
+            _LOGGER.debug(
+                "Room %s: Loaded mode setpoints: %s", self.name, self.modesetpoints
+            )
 
         currentstate = None
         if "state" in payload:
@@ -114,13 +120,19 @@ class Room:
             power,
         )
 
-        self.state.on_next(RoomState(setpoint, temperature, humidity, power, mode, currentstate, payload))
+        self.state.on_next(
+            RoomState(
+                setpoint, temperature, humidity, power, mode, currentstate, payload
+            )
+        )
 
     async def set_target_temperature(self, setpoint: float):
         """Set target temperature for room."""
         # Validate that new setpoint is within allowed ranges.
         # if above/below allowed values, set to the edge value
-        setpointrange = self.bridge.rctsetpointallowedvalues[ClimateMode(self.state.value.mode)]
+        setpointrange = self.bridge.rctsetpointallowedvalues[
+            ClimateMode(self.state.value.mode)
+        ]
 
         original_setpoint = setpoint
         setpoint = min(setpoint, setpointrange.Max)
@@ -137,7 +149,10 @@ class Room:
             )
 
         _LOGGER.debug(
-            "Room %s: Setting target temperature to %s°C (mode: %s)", self.name, setpoint, self.state.value.mode.name
+            "Room %s: Setting target temperature to %s°C (mode: %s)",
+            self.name,
+            setpoint,
+            self.state.value.mode.name,
         )
 
         # Store new setpoint for current mode
@@ -159,7 +174,12 @@ class Room:
         # Find setpoint for the mode we are about to set, and use that
         # When transmitting heating_state message.
         newsetpoint = self.modesetpoints.get(mode)
-        _LOGGER.debug("Room %s: Setting mode to %s (setpoint: %s°C)", self.name, mode.name, newsetpoint)
+        _LOGGER.debug(
+            "Room %s: Setting mode to %s (setpoint: %s°C)",
+            self.name,
+            mode.name,
+            newsetpoint,
+        )
 
         await self.bridge.send_message(
             Messages.SET_HEATING_STATE,

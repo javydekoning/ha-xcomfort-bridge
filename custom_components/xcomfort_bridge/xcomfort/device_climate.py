@@ -19,7 +19,9 @@ class RcTouch(BridgeDevice):
         BridgeDevice.__init__(self, bridge, device_id, name)
 
         self.comp_id = comp_id
-        self.virtual_rocker_id = device_id + 1  # Virtual rocker always has device_id + 1
+        self.virtual_rocker_id = (
+            device_id + 1
+        )  # Virtual rocker always has device_id + 1
 
         # Separate observable for button events from the virtual rocker
         self.button_state = rx.subject.BehaviorSubject(None)
@@ -38,7 +40,12 @@ class RcTouch(BridgeDevice):
                     humidity = float(info["value"])
 
         if temperature is not None and humidity is not None:
-            _LOGGER.debug("RcTouch %s state update: temp=%s°C, humidity=%s%%", self.name, temperature, humidity)
+            _LOGGER.debug(
+                "RcTouch %s state update: temp=%s°C, humidity=%s%%",
+                self.name,
+                temperature,
+                humidity,
+            )
             self.state.on_next(RcTouchState(temperature, humidity, payload))
 
     def handle_virtual_rocker_state(self, payload):
@@ -47,7 +54,11 @@ class RcTouch(BridgeDevice):
 
         if "curstate" in payload:
             button_state = bool(payload["curstate"])
-            _LOGGER.debug("RcTouch %s button state update: %s", self.name, "PRESSED" if button_state else "RELEASED")
+            _LOGGER.debug(
+                "RcTouch %s button state update: %s",
+                self.name,
+                "PRESSED" if button_state else "RELEASED",
+            )
             self.button_state.on_next(button_state)
 
 
@@ -87,11 +98,18 @@ class Heater(BridgeDevice):
         else:
             # Keep last known power when this payload does not include it.
             last_state = self.state.value
-            if last_state is not None and getattr(last_state, "power", None) is not None:
+            if (
+                last_state is not None
+                and getattr(last_state, "power", None) is not None
+            ):
                 power = last_state.power
 
         # Only update state if we have at least one meaningful value
-        if device_temperature is not None or heating_demand is not None or power_present:
+        if (
+            device_temperature is not None
+            or heating_demand is not None
+            or power_present
+        ):
             _LOGGER.debug(
                 "Heater %s state update: temp=%s°C, demand=%s%%, power=%sW",
                 self.name,
@@ -99,4 +117,6 @@ class Heater(BridgeDevice):
                 heating_demand,
                 power,
             )
-            self.state.on_next(HeaterState(device_temperature, heating_demand, power, payload))
+            self.state.on_next(
+                HeaterState(device_temperature, heating_demand, power, payload)
+            )

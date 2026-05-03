@@ -40,7 +40,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     ip = str(config.get(CONF_IP_ADDRESS))
     auth_key = str(config.get(CONF_AUTH_KEY))
 
-    hub = XComfortHub(hass, identifier=identifier, ip=ip, auth_key=auth_key, entry=entry)
+    hub = XComfortHub(
+        hass, identifier=identifier, ip=ip, auth_key=auth_key, entry=entry
+    )
     hass.data[DOMAIN][entry.entry_id] = hub
 
     # Start the bridge connection
@@ -103,7 +105,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     unload_ok = all(
         await asyncio.gather(
-            *[hass.config_entries.async_forward_entry_unload(entry, platform) for platform in PLATFORMS]
+            *[
+                hass.config_entries.async_forward_entry_unload(entry, platform)
+                for platform in PLATFORMS
+            ]
         )
     )
     if unload_ok:

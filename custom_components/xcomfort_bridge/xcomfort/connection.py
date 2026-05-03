@@ -111,7 +111,12 @@ async def setup_secure_connection(session, ip_address, authkey):
         deviceId = msg["payload"]["device_id"]
         deviceVersion = msg["payload"].get("device_version", "Unknown")
         connectionId = msg["payload"]["connection_id"]
-        _LOGGER.debug("Received device_id: %s, device_version: %s, connection_id: %s", deviceId, deviceVersion, connectionId)
+        _LOGGER.debug(
+            "Received device_id: %s, device_version: %s, connection_id: %s",
+            deviceId,
+            deviceVersion,
+            connectionId,
+        )
 
         _LOGGER.debug("Sending connection confirmation")
         await __send(
@@ -131,7 +136,9 @@ async def setup_secure_connection(session, ip_address, authkey):
         msg = await __receive(ws)
 
         if msg["type_int"] == Messages.CONNECTION_DECLINED:
-            _LOGGER.error("Connection declined: %s", msg["payload"].get("error_message"))
+            _LOGGER.error(
+                "Connection declined: %s", msg["payload"].get("error_message")
+            )
             _raise_connection_error(msg["payload"]["error_message"])
 
         _LOGGER.debug("Initiating secure connection")
@@ -163,7 +170,10 @@ async def setup_secure_connection(session, ip_address, authkey):
         msg = await connection.receive()
 
         if msg["type_int"] != 17:
-            _LOGGER.error("Secure connection not established (expected type 17, got %s)", msg["type_int"])
+            _LOGGER.error(
+                "Secure connection not established (expected type 17, got %s)",
+                msg["type_int"],
+            )
             _raise_secure_connection_error("Failed to establish secure connection")
 
         salt = generateSalt()
@@ -187,9 +197,11 @@ async def setup_secure_connection(session, ip_address, authkey):
 
         # {"type_int":34,"mc":-1,"payload":{"valid":true,"remaining":8640000}}
         msg = await connection.receive()
-        _LOGGER.debug("Token validation response: valid=%s, remaining=%s",
-                     msg.get("payload", {}).get("valid"),
-                     msg.get("payload", {}).get("remaining"))
+        _LOGGER.debug(
+            "Token validation response: valid=%s, remaining=%s",
+            msg.get("payload", {}).get("valid"),
+            msg.get("payload", {}).get("remaining"),
+        )
 
         # Renew token
         _LOGGER.debug("Renewing auth token")
@@ -198,7 +210,9 @@ async def setup_secure_connection(session, ip_address, authkey):
         msg = await connection.receive()
 
         if msg["type_int"] != 38:
-            _LOGGER.error("Token renewal failed (expected type 38, got %s)", msg["type_int"])
+            _LOGGER.error(
+                "Token renewal failed (expected type 38, got %s)", msg["type_int"]
+            )
             _raise_renew_token_error("Token renewal failed")
 
         token = msg["payload"]["token"]
@@ -208,9 +222,11 @@ async def setup_secure_connection(session, ip_address, authkey):
 
         # {"type_int":34,"mc":-1,"payload":{"valid":true,"remaining":8640000}}
         msg = await connection.receive()
-        _LOGGER.debug("Renewed token validation: valid=%s, remaining=%s",
-                     msg.get("payload", {}).get("valid"),
-                     msg.get("payload", {}).get("remaining"))
+        _LOGGER.debug(
+            "Renewed token validation: valid=%s, remaining=%s",
+            msg.get("payload", {}).get("valid"),
+            msg.get("payload", {}).get("remaining"),
+        )
 
     except Exception:
         _LOGGER.exception("Error during connection setup")
@@ -220,6 +236,7 @@ async def setup_secure_connection(session, ip_address, authkey):
     else:
         _LOGGER.info("Secure connection setup complete")
         return connection
+
 
 class SecureBridgeConnection:
     """Secure connection to xComfort bridge."""
@@ -274,7 +291,10 @@ class SecureBridgeConnection:
                     await self.send({"type_int": 1, "ref": result["mc"]})
 
                 if "payload" in result:
-                    _LOGGER.debug("Publishing message to subscribers: type=%s", result.get("type_int"))
+                    _LOGGER.debug(
+                        "Publishing message to subscribers: type=%s",
+                        result.get("type_int"),
+                    )
                     self._messageSubject.on_next(result)
 
             elif msg.type == aiohttp.WSMsgType.ERROR:
@@ -292,7 +312,9 @@ class SecureBridgeConnection:
         """Receive a message from the connection."""
         msg = await self.websocket.receive()
         decrypted = self.__decrypt(msg.data)
-        _LOGGER.debug("Received and decrypted message type: %s", decrypted.get("type_int"))
+        _LOGGER.debug(
+            "Received and decrypted message type: %s", decrypted.get("type_int")
+        )
         return decrypted
 
     async def send_message(self, message_type, payload):

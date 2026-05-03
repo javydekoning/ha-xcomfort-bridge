@@ -30,10 +30,16 @@ def mark_entity_added(entity: Entity) -> None:
     _LOGGER.debug("Entity attached for Rx updates: %s", _describe_entity(entity))
 
 
-def subscribe_observable(entity: Entity, observable: Any, callback: Any, source_name: str) -> None:
+def subscribe_observable(
+    entity: Entity, observable: Any, callback: Any, source_name: str
+) -> None:
     """Subscribe an attached entity to an Rx observable and auto-dispose on removal."""
     if observable is None:
-        _LOGGER.debug("Skipping Rx subscription for %s: %s is None", _describe_entity(entity), source_name)
+        _LOGGER.debug(
+            "Skipping Rx subscription for %s: %s is None",
+            _describe_entity(entity),
+            source_name,
+        )
         return
 
     _LOGGER.debug("Subscribing %s to %s", _describe_entity(entity), source_name)
@@ -92,6 +98,8 @@ def _record_pre_attach_drop(entity: Entity, source_name: str) -> None:
 
 
 def _describe_entity(entity: Entity) -> str:
-    unique_id = getattr(entity, "unique_id", None) or getattr(entity, "_attr_unique_id", None)
+    unique_id = getattr(entity, "unique_id", None) or getattr(
+        entity, "_attr_unique_id", None
+    )
     entity_id = getattr(entity, "entity_id", None)
     return f"{entity.__class__.__name__}(entity_id={entity_id}, unique_id={unique_id})"

@@ -21,7 +21,9 @@ from .xcomfort.devices import Appliance
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
+async def async_setup_entry(
+    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
+) -> None:
     """Set up xComfort appliance switch devices."""
     hub = XComfortHub.get_hub(hass, entry)
 
@@ -61,7 +63,9 @@ class HASSXComfortSwitch(SwitchEntity):
         await super().async_added_to_hass()
         mark_entity_added(self)
         _LOGGER.debug("Added appliance switch to hass %s", self._name)
-        subscribe_observable(self, self._device.state, self._state_change, "device.state")
+        subscribe_observable(
+            self, self._device.state, self._state_change, "device.state"
+        )
 
     def _state_change(self, state):
         """Handle state changes from the device."""

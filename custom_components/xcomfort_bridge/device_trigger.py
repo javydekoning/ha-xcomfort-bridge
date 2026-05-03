@@ -65,7 +65,10 @@ def _get_event_entities_for_device(
         for entry in er.async_entries_for_device(entity_registry, device_id)
         if entry.domain == "event"
         and entry.disabled_by is None
-        and (entry.platform == DOMAIN or (entry.unique_id or "").startswith(f"event_{DOMAIN}_"))
+        and (
+            entry.platform == DOMAIN
+            or (entry.unique_id or "").startswith(f"event_{DOMAIN}_")
+        )
     ]
 
 
@@ -95,7 +98,11 @@ def _get_entity_trigger_types(
     if not isinstance(entity_event_types, list):
         return DEFAULT_TRIGGER_TYPES
 
-    valid_types = [trigger_type for trigger_type in entity_event_types if trigger_type in SUPPORTED_TRIGGER_TYPES]
+    valid_types = [
+        trigger_type
+        for trigger_type in entity_event_types
+        if trigger_type in SUPPORTED_TRIGGER_TYPES
+    ]
     return valid_types or DEFAULT_TRIGGER_TYPES
 
 
@@ -127,11 +134,17 @@ async def async_validate_trigger_config(
 
     entity_entries = _get_event_entities_for_device(hass, config[CONF_DEVICE_ID])
     matching_entity = next(
-        (entry for entry in entity_entries if entry.entity_id == config[CONF_ENTITY_ID]),
+        (
+            entry
+            for entry in entity_entries
+            if entry.entity_id == config[CONF_ENTITY_ID]
+        ),
         None,
     )
     if matching_entity is None:
-        raise InvalidDeviceAutomationConfig("Entity is not a valid xComfort event entity for this device")
+        raise InvalidDeviceAutomationConfig(
+            "Entity is not a valid xComfort event entity for this device"
+        )
 
     if config[CONF_TYPE] not in _get_entity_trigger_types(
         hass,
@@ -167,7 +180,9 @@ async def async_attach_trigger(
     )
 
 
-async def async_get_triggers(hass: HomeAssistant, device_id: str) -> list[dict[str, Any]]:
+async def async_get_triggers(
+    hass: HomeAssistant, device_id: str
+) -> list[dict[str, Any]]:
     """List device triggers for xComfort event entities."""
     triggers: list[dict[str, Any]] = []
     entity_entries = sorted(

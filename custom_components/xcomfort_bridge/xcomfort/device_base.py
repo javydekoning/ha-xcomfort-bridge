@@ -20,5 +20,3 @@ class BridgeDevice:
     def handle_state(self, payload):
         """Handle state updates."""
         self.state.on_next(DeviceState(payload))
-
-

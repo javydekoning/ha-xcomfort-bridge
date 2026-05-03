@@ -1,4 +1,5 @@
 """Component module for xComfort integration."""
+
 import logging
 
 import rx
@@ -35,7 +36,12 @@ class Comp:
 
     def handle_state(self, payload):
         """Handle state updates for this component."""
-        _LOGGER.debug("Component %s (type: %s) state update: %s", self.name, self.comp_type, payload)
+        _LOGGER.debug(
+            "Component %s (type: %s) state update: %s",
+            self.name,
+            self.comp_type,
+            payload,
+        )
         self.state.on_next(CompState(payload))
 
     def __str__(self):

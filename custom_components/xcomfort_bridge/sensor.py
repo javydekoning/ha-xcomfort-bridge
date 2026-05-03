@@ -36,17 +36,17 @@ from .const import (
     CONF_POWER_ENERGY_SECTION,
     DOMAIN,
 )
+from .device_info import get_heating_valve_device_info, get_rctouch_device_info
 from .entity_lifecycle import (
     async_write_state_safely,
     init_entity_lifecycle,
     mark_entity_added,
     subscribe_observable,
 )
-from .device_info import get_rctouch_device_info
 from .hub import XComfortHub
 from .xcomfort.bridge import Room
 from .xcomfort.constants import ComponentTypes
-from .xcomfort.devices import Appliance, Heater, Light, RcTouch, Rocker
+from .xcomfort.devices import Appliance, Heater, HeatingValve, Light, RcTouch, Rocker
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -58,6 +58,7 @@ MULTI_CHANNEL_COMPONENTS = {
     ComponentTypes.PUSH_BUTTON_MULTI_SENSOR_4_CHANNEL,
     ComponentTypes.REMOTE_CONTROL_2_CHANNEL,
 }
+
 
 def _is_multi_channel_component(comp_type: int) -> bool:
     """Check if a component type is multi-channel."""
@@ -87,7 +88,9 @@ def _remove_power_energy_entities(
 ) -> None:
     """Remove power/energy entities when options are disabled."""
     entity_registry = er.async_get(hass)
-    registry_entries = er.async_entries_for_config_entry(entity_registry, entry.entry_id)
+    registry_entries = er.async_entries_for_config_entry(
+        entity_registry, entry.entry_id
+    )
 
     def _remove_entities_for_unique_ids(unique_ids: set[str], label: str) -> None:
         if not unique_ids:
@@ -97,7 +100,11 @@ def _remove_power_energy_entities(
             if reg_entry.domain != "sensor":
                 continue
             if reg_entry.unique_id in unique_ids:
-                _LOGGER.info("Removing %s sensor entity due to options change: %s", label, reg_entry.entity_id)
+                _LOGGER.info(
+                    "Removing %s sensor entity due to options change: %s",
+                    label,
+                    reg_entry.entity_id,
+                )
                 entity_registry.async_remove(reg_entry.entity_id)
                 removed += 1
         if removed:
@@ -148,9 +155,20 @@ def _build_device_sensors(
 
     for device in devices:
         if isinstance(device, RcTouch):
-            _LOGGER.debug("Adding temperature and humidity sensors for RcTouch device %s", device.name)
+            _LOGGER.debug(
+                "Adding temperature and humidity sensors for RcTouch device %s",
+                device.name,
+            )
             sensors.append(XComfortRcTouchTemperatureSensor(hub, device))
             sensors.append(XComfortRcTouchHumiditySensor(hub, device))
+        elif isinstance(device, HeatingValve):
+            _LOGGER.debug(
+                "Adding ambient temperature, device temperature, and valve position sensors for HeatingValve device %s",
+                device.name,
+            )
+            sensors.append(XComfortHeatingValveAmbientTemperatureSensor(hub, device))
+            sensors.append(XComfortHeatingValveDeviceTemperatureSensor(hub, device))
+            sensors.append(XComfortHeatingValvePositionSensor(hub, device))
         elif isinstance(device, Heater):
             if add_heater_power_sensors:
                 _LOGGER.debug(
@@ -168,17 +186,23 @@ def _build_device_sensors(
                 sensors.append(XComfortHeaterPowerSensor(hub, device))
                 sensors.append(XComfortHeaterEnergySensor(hub, device))
         elif isinstance(device, Light) and add_light_power_sensors:
-            _LOGGER.debug("Adding power and energy sensors for Light device %s", device.name)
+            _LOGGER.debug(
+                "Adding power and energy sensors for Light device %s", device.name
+            )
             sensors.append(XComfortLightPowerSensor(hub, device))
             sensors.append(XComfortLightEnergySensor(hub, device))
         elif isinstance(device, Appliance) and add_appliance_power_sensors:
-            _LOGGER.debug("Adding power and energy sensors for Appliance device %s", device.name)
+            _LOGGER.debug(
+                "Adding power and energy sensors for Appliance device %s", device.name
+            )
             sensors.append(XComfortAppliancePowerSensor(hub, device))
             sensors.append(XComfortApplianceEnergySensor(hub, device))
         elif isinstance(device, Rocker) and device.has_sensors:
             comp = device.bridge._comps.get(device.comp_id)  # noqa: SLF001
             if not comp:
-                _LOGGER.warning("Rocker %s has sensors but no component, skipping", device.name)
+                _LOGGER.warning(
+                    "Rocker %s has sensors but no component, skipping", device.name
+                )
                 continue
 
             # For multi-channel components, only create sensors once (not per button)
@@ -196,7 +220,10 @@ def _build_device_sensors(
                     comp.name,
                 )
             else:
-                _LOGGER.debug("Adding temperature and humidity sensors for multisensor Rocker %s", device.name)
+                _LOGGER.debug(
+                    "Adding temperature and humidity sensors for multisensor Rocker %s",
+                    device.name,
+                )
 
             sensors.append(XComfortRockerTemperatureSensor(hub, device))
             sensors.append(XComfortRockerHumiditySensor(hub, device))
@@ -243,7 +270,9 @@ def _build_room_sensors(
     return sensors
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
+async def async_setup_entry(
+    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
+) -> None:
     """Set up xComfort sensor devices."""
     hub = XComfortHub.get_hub(hass, entry)
 
@@ -273,11 +302,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     # Add hub diagnostic sensors immediately
     hub_sensors = [
         XComfortHubSensor(hub, entry, "hub_id", "Hub ID", "mdi:identifier"),
-        XComfortHubSensor(hub, entry, "firmware_version", "Firmware Version", "mdi:chip"),
+        XComfortHubSensor(
+            hub, entry, "firmware_version", "Firmware Version", "mdi:chip"
+        ),
         XComfortHubSensor(hub, entry, "bridge_name", "Bridge Name", "mdi:bridge"),
         XComfortHubSensor(hub, entry, "bridge_model", "Bridge Model", "mdi:devices"),
         XComfortHubSensor(hub, entry, "ip_address", "IP Address", "mdi:ip-network", ip),
-        XComfortHubSensor(hub, entry, "home_scenes_count", "Scenes Count", "mdi:script-text-outline"),
+        XComfortHubSensor(
+            hub, entry, "home_scenes_count", "Scenes Count", "mdi:script-text-outline"
+        ),
     ]
 
     async_add_entities(hub_sensors)
@@ -480,8 +513,12 @@ class XComfortEnergySensor(RestoreSensor):
     def calculate(self, power):
         """Calculate energy consumption since last update."""
         now = time.monotonic()
-        timediff = math.floor(now - self._updateTime)  # number of seconds since last update
-        self._consumption += power / 3600 / 1000 * timediff  # Calculate, in kWh, energy consumption since last update.
+        timediff = math.floor(
+            now - self._updateTime
+        )  # number of seconds since last update
+        self._consumption += (
+            power / 3600 / 1000 * timediff
+        )  # Calculate, in kWh, energy consumption since last update.
         self._updateTime = now
 
     @property
@@ -513,7 +550,9 @@ class XComfortRcTouchTemperatureSensor(SensorEntity):
         )
         self._device = device
         self._attr_name = f"{self._device.name} Temperature"
-        self._attr_unique_id = f"temperature_{self._device.name}_{self._device.device_id}"
+        self._attr_unique_id = (
+            f"temperature_{self._device.name}_{self._device.device_id}"
+        )
 
         self.hub = hub
         self._state = None
@@ -525,7 +564,9 @@ class XComfortRcTouchTemperatureSensor(SensorEntity):
         """Subscribe to device state after entity attachment."""
         await super().async_added_to_hass()
         mark_entity_added(self)
-        subscribe_observable(self, self._device.state, self._state_change, "device.state")
+        subscribe_observable(
+            self, self._device.state, self._state_change, "device.state"
+        )
 
     def _state_change(self, state):
         should_update = self._state is not None
@@ -572,7 +613,9 @@ class XComfortRcTouchHumiditySensor(SensorEntity):
         """Subscribe to device state after entity attachment."""
         await super().async_added_to_hass()
         mark_entity_added(self)
-        subscribe_observable(self, self._device.state, self._state_change, "device.state")
+        subscribe_observable(
+            self, self._device.state, self._state_change, "device.state"
+        )
 
     def _state_change(self, state):
         should_update = self._state is not None
@@ -607,7 +650,9 @@ class XComfortHeaterTemperatureSensor(SensorEntity):
         )
         self._device = device
         self._attr_name = f"{self._device.name} Temperature"
-        self._attr_unique_id = f"temperature_{self._device.name}_{self._device.device_id}"
+        self._attr_unique_id = (
+            f"temperature_{self._device.name}_{self._device.device_id}"
+        )
 
         self.hub = hub
         self._state = None
@@ -627,7 +672,9 @@ class XComfortHeaterTemperatureSensor(SensorEntity):
         """Subscribe to device state after entity attachment."""
         await super().async_added_to_hass()
         mark_entity_added(self)
-        subscribe_observable(self, self._device.state, self._state_change, "device.state")
+        subscribe_observable(
+            self, self._device.state, self._state_change, "device.state"
+        )
 
     def _state_change(self, state):
         should_update = self._state is not None
@@ -661,7 +708,9 @@ class XComfortHeaterHeatingDemandSensor(SensorEntity):
         )
         self._device = device
         self._attr_name = f"{self._device.name} Heating Demand"
-        self._attr_unique_id = f"heating_demand_{self._device.name}_{self._device.device_id}"
+        self._attr_unique_id = (
+            f"heating_demand_{self._device.name}_{self._device.device_id}"
+        )
         self._attr_icon = "mdi:radiator"
 
         self.hub = hub
@@ -678,7 +727,9 @@ class XComfortHeaterHeatingDemandSensor(SensorEntity):
         """Subscribe to device state after entity attachment."""
         await super().async_added_to_hass()
         mark_entity_added(self)
-        subscribe_observable(self, self._device.state, self._state_change, "device.state")
+        subscribe_observable(
+            self, self._device.state, self._state_change, "device.state"
+        )
 
     def _state_change(self, state):
         should_update = self._state is not None
@@ -729,7 +780,9 @@ class XComfortHeaterPowerSensor(SensorEntity):
         """Subscribe to device state after entity attachment."""
         await super().async_added_to_hass()
         mark_entity_added(self)
-        subscribe_observable(self, self._device.state, self._state_change, "device.state")
+        subscribe_observable(
+            self, self._device.state, self._state_change, "device.state"
+        )
 
     def _state_change(self, state):
         should_update = self._state is not None
@@ -784,7 +837,9 @@ class XComfortHeaterEnergySensor(RestoreSensor):
         if saved_state and saved_state.native_value is not None:
             self._consumption = cast("float", saved_state.native_value)
         mark_entity_added(self)
-        subscribe_observable(self, self._device.state, self._state_change, "device.state")
+        subscribe_observable(
+            self, self._device.state, self._state_change, "device.state"
+        )
 
     def _state_change(self, state):
         should_update = self._state is not None
@@ -796,7 +851,9 @@ class XComfortHeaterEnergySensor(RestoreSensor):
         """Calculate energy consumption since last update."""
         now = time.monotonic()
         time_diff = now - self._update_time  # number of seconds since last update
-        self._consumption += power / 3600 / 1000 * time_diff  # Calculate, in kWh, energy consumption since last update
+        self._consumption += (
+            power / 3600 / 1000 * time_diff
+        )  # Calculate, in kWh, energy consumption since last update
         self._update_time = now
 
     @property
@@ -847,7 +904,9 @@ class XComfortLightPowerSensor(SensorEntity):
         """Subscribe to device state after entity attachment."""
         await super().async_added_to_hass()
         mark_entity_added(self)
-        subscribe_observable(self, self._device.state, self._state_change, "device.state")
+        subscribe_observable(
+            self, self._device.state, self._state_change, "device.state"
+        )
 
     def _state_change(self, state):
         should_update = self._state is not None
@@ -905,7 +964,9 @@ class XComfortLightEnergySensor(RestoreSensor):
         if saved_state and saved_state.native_value is not None:
             self._consumption = cast("float", saved_state.native_value)
         mark_entity_added(self)
-        subscribe_observable(self, self._device.state, self._state_change, "device.state")
+        subscribe_observable(
+            self, self._device.state, self._state_change, "device.state"
+        )
 
     def _state_change(self, state):
         should_update = self._state is not None
@@ -969,7 +1030,9 @@ class XComfortAppliancePowerSensor(SensorEntity):
         """Subscribe to device state after entity attachment."""
         await super().async_added_to_hass()
         mark_entity_added(self)
-        subscribe_observable(self, self._device.state, self._state_change, "device.state")
+        subscribe_observable(
+            self, self._device.state, self._state_change, "device.state"
+        )
 
     def _state_change(self, state):
         should_update = self._state is not None
@@ -1028,7 +1091,9 @@ class XComfortApplianceEnergySensor(RestoreSensor):
         if saved_state and saved_state.native_value is not None:
             self._consumption = cast("float", saved_state.native_value)
         mark_entity_added(self)
-        subscribe_observable(self, self._device.state, self._state_change, "device.state")
+        subscribe_observable(
+            self, self._device.state, self._state_change, "device.state"
+        )
 
     def _state_change(self, state):
         should_update = self._state is not None
@@ -1093,7 +1158,9 @@ class XComfortRockerTemperatureSensor(SensorEntity):
         """Subscribe to device state after entity attachment."""
         await super().async_added_to_hass()
         mark_entity_added(self)
-        subscribe_observable(self, self._device.state, self._state_change, "device.state")
+        subscribe_observable(
+            self, self._device.state, self._state_change, "device.state"
+        )
 
     def _state_change(self, state):
         should_update = self._state is not None
@@ -1154,7 +1221,9 @@ class XComfortRockerHumiditySensor(SensorEntity):
         """Subscribe to device state after entity attachment."""
         await super().async_added_to_hass()
         mark_entity_added(self)
-        subscribe_observable(self, self._device.state, self._state_change, "device.state")
+        subscribe_observable(
+            self, self._device.state, self._state_change, "device.state"
+        )
 
     def _state_change(self, state):
         should_update = self._state is not None
@@ -1261,17 +1330,28 @@ class XComfortRoomSensorBase(SensorEntity):
 # Room sensor factory functions
 def XComfortRoomLightsOnSensor(hub: XComfortHub, room: Room):
     """Create a room lights on sensor."""
-    return XComfortRoomSensorBase(hub, room, "lights_on", "Lights On", "mdi:lightbulb-on", "lightsOn")
+    return XComfortRoomSensorBase(
+        hub, room, "lights_on", "Lights On", "mdi:lightbulb-on", "lightsOn"
+    )
 
 
 def XComfortRoomWindowsOpenSensor(hub: XComfortHub, room: Room):
     """Create a room windows open sensor."""
-    return XComfortRoomSensorBase(hub, room, "windows_open", "Windows Open", "mdi:window-open-variant", "windowsOpen")
+    return XComfortRoomSensorBase(
+        hub,
+        room,
+        "windows_open",
+        "Windows Open",
+        "mdi:window-open-variant",
+        "windowsOpen",
+    )
 
 
 def XComfortRoomDoorsOpenSensor(hub: XComfortHub, room: Room):
     """Create a room doors open sensor."""
-    return XComfortRoomSensorBase(hub, room, "doors_open", "Doors Open", "mdi:door-open", "doorsOpen")
+    return XComfortRoomSensorBase(
+        hub, room, "doors_open", "Doors Open", "mdi:door-open", "doorsOpen"
+    )
 
 
 def XComfortRoomTemperatureSensor(hub: XComfortHub, room: Room):
@@ -1321,7 +1401,14 @@ def XComfortRoomCurrentModeSensor(hub: XComfortHub, room: Room):
         return current_mode
 
     return XComfortRoomSensorBase(
-        hub, room, "current_mode", "Current Mode", "mdi:thermostat", "currentMode", state_class=None, value_fn=map_mode
+        hub,
+        room,
+        "current_mode",
+        "Current Mode",
+        "mdi:thermostat",
+        "currentMode",
+        state_class=None,
+        value_fn=map_mode,
     )
 
 
@@ -1337,3 +1424,165 @@ def XComfortRoomValveSensor(hub: XComfortHub, room: Room):
         unit=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
     )
+
+
+class XComfortHeatingValveAmbientTemperatureSensor(SensorEntity):
+    """Entity class for xComfort HeatingValve ambient temperature sensors."""
+
+    def __init__(self, hub: XComfortHub, device: HeatingValve):
+        """Initialize the ambient temperature sensor entity.
+
+        Args:
+            hub: XComfortHub instance
+            device: HeatingValve device instance
+
+        """
+        self.entity_description = SensorEntityDescription(
+            key="temperature",
+            device_class=SensorDeviceClass.TEMPERATURE,
+            native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+            state_class=SensorStateClass.MEASUREMENT,
+            name="Temperature",
+        )
+        self._device = device
+        self._attr_name = f"{self._device.name} Temperature"
+        self._attr_unique_id = (
+            f"temperature_{self._device.name}_{self._device.device_id}"
+        )
+
+        self.hub = hub
+        self._state = None
+        init_entity_lifecycle(self)
+
+        self._attr_device_info = get_heating_valve_device_info(hub, device)
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to device state after entity attachment."""
+        await super().async_added_to_hass()
+        mark_entity_added(self)
+        subscribe_observable(
+            self, self._device.state, self._state_change, "device.state"
+        )
+
+    def _state_change(self, state):
+        should_update = self._state is not None
+        self._state = state
+        if should_update:
+            async_write_state_safely(self, "device.state")
+
+    @property
+    def native_value(self):
+        """Return the current value."""
+        return self._state and self._state.ambient_temperature
+
+
+class XComfortHeatingValveDeviceTemperatureSensor(SensorEntity):
+    """Entity class for xComfort HeatingValve device temperature sensors."""
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, hub: XComfortHub, device: HeatingValve):
+        """Initialize the device temperature sensor entity.
+
+        Args:
+            hub: XComfortHub instance
+            device: HeatingValve device instance
+
+        """
+        self.entity_description = SensorEntityDescription(
+            key="device_temperature",
+            device_class=SensorDeviceClass.TEMPERATURE,
+            native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+            state_class=SensorStateClass.MEASUREMENT,
+            name="Device Temperature",
+        )
+        self._device = device
+        self._attr_name = f"{self._device.name} Device Temperature"
+        self._attr_unique_id = (
+            f"device_temperature_{self._device.name}_{self._device.device_id}"
+        )
+
+        self.hub = hub
+        self._state = None
+        init_entity_lifecycle(self)
+
+        # Link to the same HA device
+        self._attr_device_info = DeviceInfo(
+            identifiers={
+                (DOMAIN, f"heating_valve_{DOMAIN}_{hub.identifier}-{device.device_id}")
+            },
+        )
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to device state after entity attachment."""
+        await super().async_added_to_hass()
+        mark_entity_added(self)
+        subscribe_observable(
+            self, self._device.state, self._state_change, "device.state"
+        )
+
+    def _state_change(self, state):
+        should_update = self._state is not None
+        self._state = state
+        if should_update:
+            async_write_state_safely(self, "device.state")
+
+    @property
+    def native_value(self):
+        """Return the current value."""
+        return self._state and self._state.device_temperature
+
+
+class XComfortHeatingValvePositionSensor(SensorEntity):
+    """Entity class for xComfort HeatingValve position sensors."""
+
+    def __init__(self, hub: XComfortHub, device: HeatingValve):
+        """Initialize the valve position sensor entity.
+
+        Args:
+            hub: XComfortHub instance
+            device: HeatingValve device instance
+
+        """
+        self.entity_description = SensorEntityDescription(
+            key="valve_position",
+            native_unit_of_measurement=PERCENTAGE,
+            state_class=SensorStateClass.MEASUREMENT,
+            name="Valve Position",
+        )
+        self._device = device
+        self._attr_name = f"{self._device.name} Valve Position"
+        self._attr_unique_id = (
+            f"valve_position_{self._device.name}_{self._device.device_id}"
+        )
+        self._attr_icon = "mdi:valve"
+
+        self.hub = hub
+        self._state = None
+        init_entity_lifecycle(self)
+
+        # Link to the same HA device
+        self._attr_device_info = DeviceInfo(
+            identifiers={
+                (DOMAIN, f"heating_valve_{DOMAIN}_{hub.identifier}-{device.device_id}")
+            },
+        )
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to device state after entity attachment."""
+        await super().async_added_to_hass()
+        mark_entity_added(self)
+        subscribe_observable(
+            self, self._device.state, self._state_change, "device.state"
+        )
+
+    def _state_change(self, state):
+        should_update = self._state is not None
+        self._state = state
+        if should_update:
+            async_write_state_safely(self, "device.state")
+
+    @property
+    def native_value(self):
+        """Return the current value."""
+        return self._state and self._state.valve_position

@@ -24,7 +24,11 @@ class DoorWindowSensor(BridgeDevice):
         if (state := payload.get("curstate")) is not None:
             self.is_closed = state == 1
             self.is_open = not self.is_closed
-            _LOGGER.debug("Door/Window sensor %s state update: %s", self.name, "CLOSED" if self.is_closed else "OPEN")
+            _LOGGER.debug(
+                "Door/Window sensor %s state update: %s",
+                self.name,
+                "CLOSED" if self.is_closed else "OPEN",
+            )
 
         self.state.on_next(self.is_closed)
 
@@ -35,6 +39,3 @@ class WindowSensor(DoorWindowSensor):
 
 class DoorSensor(DoorWindowSensor):
     """Door sensor device class."""
-
-
-

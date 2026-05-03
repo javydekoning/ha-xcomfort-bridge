@@ -155,11 +155,11 @@ class DeviceTypes(IntEnum):
     ACTUATOR_DIMM = 101
     SHADING_ACTUATOR = 102
     # Sensor/input device types
-    MOTION_SENSOR = 200       # Push switch channel on sensors
-    ROCKER_SENSOR = 201       # Rocker channel on sensor components
-    SWITCH = 202              # Switch channel (door/window sensors, pushbuttons)
-    ROCKER_BINARY_INPUT = 211 # Rocker on binary input devices (230V / battery)
-    ROCKER = 220              # Rocker channel on actuators & remotes
+    MOTION_SENSOR = 200  # Push switch channel on sensors
+    ROCKER_SENSOR = 201  # Rocker channel on sensor components
+    SWITCH = 202  # Switch channel (door/window sensors, pushbuttons)
+    ROCKER_BINARY_INPUT = 211  # Rocker on binary input devices (230V / battery)
+    ROCKER = 220  # Rocker channel on actuators & remotes
     # Temperature & climate
     TEMP_SENSOR = 410
     ACTUATOR_HEATING = 440
@@ -200,7 +200,7 @@ class ComponentTypes(IntEnum):
     BINARY_INPUT_230V = 19
     BINARY_INPUT_BATTERY = 20
     TEMPERATURE_SENSOR = 23
-    SHADING_ACTUATOR_LEGACY = 27   # Older shading actuator
+    SHADING_ACTUATOR_LEGACY = 27  # Older shading actuator
     MOTION_SENSOR = 29
     REMOTE_CONTROL_2_CHANNEL = 48
     REMOTE_CONTROL_12_CHANNEL = 49
@@ -215,7 +215,7 @@ class ComponentTypes(IntEnum):
     BRIDGE = 83
     WATER_GUARD = 84
     WATER_SENSOR = 85
-    SHADING_ACTUATOR = 86          # 2021+ shading actuator
+    SHADING_ACTUATOR = 86  # 2021+ shading actuator
     PUSH_BUTTON_MULTI_SENSOR_1_CHANNEL = 87
     PUSH_BUTTON_MULTI_SENSOR_2_CHANNEL = 88
     PUSH_BUTTON_MULTI_SENSOR_4_CHANNEL = 89
@@ -412,9 +412,9 @@ class DeviceStateUpdateText(IntEnum):
     OVERTEMPERATURE = 1105
     OVERLOAD = 1106
     LOAD_ERROR = 1107
-    SIGNAL_STRENGTH = 1108       # -{{value}}dBm
-    DEVICE_TEMPERATURE = 1109    # {{value}}°C
-    POWER = 1110                 # {{value}}W
+    SIGNAL_STRENGTH = 1108  # -{{value}}dBm
+    DEVICE_TEMPERATURE = 1109  # {{value}}°C
+    POWER = 1110  # {{value}}W
     SIGNAL_QUALITY = 1111
     NOT_CONFIGURED = 1112
     # Battery levels
@@ -427,23 +427,23 @@ class DeviceStateUpdateText(IntEnum):
     MAINS_POWERED = 1119
     EXTERNAL_CONNECTIONS = 1120  # {{value}} connections
     # Sensor values
-    PERCENTAGE = 1121            # {{value}}% (valve, etc.)
+    PERCENTAGE = 1121  # {{value}}% (valve, etc.)
     # Ambient sensors
-    AMBIENT_TEMPERATURE = 1222   # {{value}}°C
-    HUMIDITY = 1223              # {{value}}%
-    PT1000_TEMPERATURE = 1224    # PT1000: {{value}}°C
-    VALVE_POSITION = 1225        # Valve: {{value}}% (also used as heating demand)
-    DIMM_VALUE = VALVE_POSITION   # Backward-compat alias
-    POWER_ALT = 1226             # {{value}}W (alternative)
+    AMBIENT_TEMPERATURE = 1222  # {{value}}°C
+    HUMIDITY = 1223  # {{value}}%
+    PT1000_TEMPERATURE = 1224  # PT1000: {{value}}°C
+    VALVE_POSITION = 1225  # Valve: {{value}}% (also used as heating demand)
+    DIMM_VALUE = VALVE_POSITION  # Backward-compat alias
+    POWER_ALT = 1226  # {{value}}W (alternative)
     SUM_REQUEST = 1227
     NOT_CONFIGURED_ALT = 1228
     # Weather station
-    WIND_SPEED = 1240            # {{value}}m/s
-    RAIN = 1241                  # Rain
-    NO_RAIN = 1242               # No Rain
-    BRIGHTNESS = 1243            # {{value}} (lux)
+    WIND_SPEED = 1240  # {{value}}m/s
+    RAIN = 1241  # Rain
+    NO_RAIN = 1242  # No Rain
+    BRIGHTNESS = 1243  # {{value}} (lux)
     # Shading
-    POSITION = 1132              # Position: {{value}}
+    POSITION = 1132  # Position: {{value}}
     CALIBRATION_NEEDED = 1133
     # Motion
     MOTION = 1125
