@@ -1,6 +1,9 @@
 """Rocker device for xComfort integration."""
 
 import logging
+import time
+
+import rx
 
 from .constants import ComponentTypes
 from .device_base import BridgeDevice
@@ -18,6 +21,11 @@ class Rocker(BridgeDevice):
         self.comp_id = comp_id
         self.payload = payload
         self.is_on: bool | None = None
+        # Dedicated stream for button edges only (press/release), used by EventEntity.
+        self.button_state = rx.subject.BehaviorSubject(None)
+        self._last_button_emit_state: bool | None = None
+        self._last_button_emit_ts: float = 0.0
+        self._button_emit_dedupe_window_s: float = 0.25
         self.temperature: float | None = None
         self.humidity: float | None = None
         self._sensor_device = None
@@ -73,7 +81,11 @@ class Rocker(BridgeDevice):
         )
 
         for device in self.bridge._devices.values():  # noqa: SLF001
-            if device.device_id != self.device_id and hasattr(device, "comp_id") and device.comp_id == self.comp_id:
+            if (
+                device.device_id != self.device_id
+                and hasattr(device, "comp_id")
+                and device.comp_id == self.comp_id
+            ):
                 # Found a companion device in the same component
                 _LOGGER.info(
                     "Rocker %s found companion sensor device by comp_id: %s (device_id=%s)",
@@ -83,7 +95,7 @@ class Rocker(BridgeDevice):
                 )
                 self._sensor_device = device
                 # Subscribe to its state updates
-                device.state.subscribe(lambda state: self._on_sensor_device_update(state))
+                device.state.subscribe(self._on_sensor_device_update)
                 return
 
         # Not found yet - will retry on first state update
@@ -107,7 +119,11 @@ class Rocker(BridgeDevice):
 
         # Handle different state types
         if not hasattr(state, "raw"):
-            _LOGGER.debug("Rocker %s sensor state has no 'raw' attribute, type is %s", self.name, type(state).__name__)
+            _LOGGER.debug(
+                "Rocker %s sensor state has no 'raw' attribute, type is %s",
+                self.name,
+                type(state).__name__,
+            )
             return
 
         payload = state.raw
@@ -118,12 +134,19 @@ class Rocker(BridgeDevice):
 
         # Parse sensor data from device info array
         if "info" in payload:
-            _LOGGER.debug("Rocker %s parsing info array: %s", self.name, payload["info"])
+            _LOGGER.debug(
+                "Rocker %s parsing info array: %s", self.name, payload["info"]
+            )
             for info in payload["info"]:
                 text = info.get("text")
                 value_str = info.get("value")
 
-                _LOGGER.debug("Rocker %s checking info item: text=%s, value=%s", self.name, text, value_str)
+                _LOGGER.debug(
+                    "Rocker %s checking info item: text=%s, value=%s",
+                    self.name,
+                    text,
+                    value_str,
+                )
 
                 if not value_str:
                     continue
@@ -133,14 +156,20 @@ class Rocker(BridgeDevice):
                     # Use RC Touch codes: 1222 = temp, 1223 = humidity
                     if text == "1222":
                         temperature = value
-                        _LOGGER.debug("Rocker %s found temperature: %s°C", self.name, temperature)
+                        _LOGGER.debug(
+                            "Rocker %s found temperature: %s°C", self.name, temperature
+                        )
                     elif text == "1223":
                         humidity = value
-                        _LOGGER.debug("Rocker %s found humidity: %s%%", self.name, humidity)
+                        _LOGGER.debug(
+                            "Rocker %s found humidity: %s%%", self.name, humidity
+                        )
                 except (ValueError, TypeError) as e:
                     _LOGGER.debug("Rocker %s error parsing value: %s", self.name, e)
         else:
-            _LOGGER.debug("Rocker %s sensor device payload has no 'info' key", self.name)
+            _LOGGER.debug(
+                "Rocker %s sensor device payload has no 'info' key", self.name
+            )
 
         # Update sensor values if we got them
         if temperature != self.temperature or humidity != self.humidity:
@@ -148,11 +177,18 @@ class Rocker(BridgeDevice):
             self.humidity = humidity
 
             _LOGGER.info(
-                "Rocker %s sensor values updated: temp=%s°C, humidity=%s%%", self.name, self.temperature, self.humidity
+                "Rocker %s sensor values updated: temp=%s°C, humidity=%s%%",
+                self.name,
+                self.temperature,
+                self.humidity,
             )
 
             if self.temperature is not None or self.humidity is not None:
-                self.state.on_next(RockerSensorState(self.is_on, self.temperature, self.humidity, self.payload))
+                self.state.on_next(
+                    RockerSensorState(
+                        self.is_on, self.temperature, self.humidity, self.payload
+                    )
+                )
         else:
             _LOGGER.debug("Rocker %s sensor values unchanged", self.name)
 
@@ -186,12 +222,21 @@ class Rocker(BridgeDevice):
         if comp and comp.state.value:
             comp_payload = comp.state.value.raw
             if "info" in comp_payload:
-                _LOGGER.debug("Rocker %s component info update: %s", self.name, comp_payload["info"])
+                _LOGGER.debug(
+                    "Rocker %s component info update: %s",
+                    self.name,
+                    comp_payload["info"],
+                )
 
-    def handle_state(self, payload, broadcast: bool = True) -> None:
+    def handle_state(
+        self, payload, broadcast: bool = True, emit_button_event: bool = True
+    ) -> None:
         """Handle rocker state updates."""
         self.payload.update(payload)
-        self.is_on = bool(payload["curstate"])
+        button_event_state: bool | None = None
+        if "curstate" in payload:
+            self.is_on = bool(payload["curstate"])
+            button_event_state = self.is_on
 
         # For multisensor rockers, include sensor data in state
         if self.has_sensors:
@@ -208,17 +253,33 @@ class Rocker(BridgeDevice):
             )
             if broadcast:
                 # Always broadcast with RockerSensorState for multisensor rockers
-                self.state.on_next(RockerSensorState(self.is_on, self.temperature, self.humidity, payload))
+                self.state.on_next(
+                    RockerSensorState(
+                        self.is_on, self.temperature, self.humidity, payload
+                    )
+                )
         else:
-            _LOGGER.debug("Rocker %s state update: %s", self.name, "ON" if self.is_on else "OFF")
+            _LOGGER.debug(
+                "Rocker %s state update: %s", self.name, "ON" if self.is_on else "OFF"
+            )
             if broadcast:
                 self.state.on_next(self.is_on)
+
+        # Emit button events for each curstate update, but dedupe very fast duplicates.
+        if emit_button_event and button_event_state is not None:
+            now = time.monotonic()
+            is_fast_duplicate = (
+                self._last_button_emit_state == button_event_state
+                and (now - self._last_button_emit_ts)
+                < self._button_emit_dedupe_window_s
+            )
+            if not is_fast_duplicate:
+                self.button_state.on_next(button_event_state)
+                self._last_button_emit_state = button_event_state
+                self._last_button_emit_ts = now
 
     def __str__(self):
         """Return string representation of rocker device."""
         if self.has_sensors:
             return f'Rocker({self.device_id}, "{self.name}", is_on: {self.is_on}, temp: {self.temperature}, humidity: {self.humidity})'
         return f'Rocker({self.device_id}, "{self.name}", is_on: {self.is_on} payload: {self.payload})'
-
-
-

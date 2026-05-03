@@ -16,15 +16,32 @@ class DeviceState:
 class LightState(DeviceState):
     """Light device state."""
 
-    def __init__(self, switch, dimmvalue, payload):
+    def __init__(self, switch, dimmvalue, power, payload):
         """Initialize light state."""
         DeviceState.__init__(self, payload)
         self.switch = switch
         self.dimmvalue = dimmvalue
+        self.power = power
 
     def __str__(self):
         """Return string representation of light state."""
-        return f"LightState({self.switch}, {self.dimmvalue})"
+        return f"LightState({self.switch}, {self.dimmvalue}, power={self.power})"
+
+    __repr__ = __str__
+
+
+class SwitchState(DeviceState):
+    """Switch device state."""
+
+    def __init__(self, is_on, power, payload):
+        """Initialize switch state."""
+        DeviceState.__init__(self, payload)
+        self.is_on = is_on
+        self.power = power
+
+    def __str__(self):
+        """Return string representation of switch state."""
+        return f"SwitchState({self.is_on}, power={self.power})"
 
     __repr__ = __str__
 
@@ -75,6 +92,42 @@ class HeaterState(DeviceState):
     def __str__(self):
         """Return string representation of heater state."""
         return f"HeaterState(temp={self.device_temperature}°C, demand={self.heating_demand}%, power={self.power}W)"
+
+    __repr__ = __str__
+
+
+class HeatingValveState(DeviceState):
+    """Heating valve device state."""
+
+    def __init__(
+        self, ambient_temperature, device_temperature, valve_position, power, payload
+    ):
+        """Initialize heating valve state."""
+        DeviceState.__init__(self, payload)
+        self.ambient_temperature = ambient_temperature
+        self.device_temperature = device_temperature
+        self.valve_position = valve_position
+        self.power = power
+
+    @property
+    def temperature(self):
+        """Alias for ambient_temperature (climate.py compatibility)."""
+        return self.ambient_temperature
+
+    @property
+    def humidity(self):
+        """Return None — heating valves don't measure humidity."""
+        return None
+
+    def __str__(self):
+        """Return string representation of heating valve state."""
+        return (
+            f"HeatingValveState("
+            f"ambient_temp={self.ambient_temperature}°C, "
+            f"device_temp={self.device_temperature}°C, "
+            f"valve={self.valve_position}%, "
+            f"power={self.power}W)"
+        )
 
     __repr__ = __str__
 

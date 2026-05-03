@@ -7,16 +7,17 @@ Eaton xComfort integration with Home Assistant. Note that you need the **xComfor
 ✅ for "Yes, "❌ for "No" or ⚠️ for "Partial" functionality.
 
 | Device                          | Device Type    | Tested | Functional |
-| ------------------------------- | -------------- | ------ | ---------- |
-| Push Button 1-Fold              | CTAA-01/04     | ✅      | ✅          |
-| Push Button 2-Fold              | CTAA-02/04     | ✅      | ✅          |
-| Push Button 4-Fold              | CTAA-04/04     | ✅      | ✅          |
-| Push Button MultiSensor 1-Fold  | CTSA-01/04     | ✅      | ✅          |
-| Push Button MultiSensor 2-Fold  | CTSA-02/04     | ❌      |            |
-| Push Button MultiSensor 4-Fold  | CTSA-04/04     | ❌      |            |
-| Remote Control 2-Channel (mini) | CHSZ-02/02     | ✅      | ✅          |
-| Switching Plug                  | CSAP-01/F5-12E | ✅      | ❌          |
-| Heating Actuator                | CHAU-01/01-10E | ✅      | ✅          |
+|---------------------------------|----------------|--------|------------|
+| Push Button 1-Fold              | CTAA-01/04     | YES    | YES        |
+| Push Button 2-Fold              | CTAA-02/04     | YES    | YES        |
+| Push Button 4-Fold              | CTAA-04/04     | YES    | YES        |
+| Push Button MultiSensor 1-Fold  | CTSA-01/04     | YES    | YES        |
+| Push Button MultiSensor 2-Fold  | CTSA-02/04     | No     | No         |
+| Push Button MultiSensor 4-Fold  | CTSA-04/04     | No     | No         |
+| Remote Control 2-Channel (mini) | CHSZ-02/02     | YES    | YES        |
+| Switching Plug                  | CSAP-01/F5-12E | YES    | No         |
+| Heating Actuator                | CHAU-01/01-10E | YES    | YES        |
+| Heating Valve                   | CHVZ-01/05     | YES    | YES        |
 
 **CSAP-01/F5-12E** is not reporting power consumption frequently enough to be reliable. Recommend to use Shelly or similar instead.
 
@@ -34,7 +35,7 @@ From HACS
 
 This repo is a (detached) fork of [jankrib/ha-xcomfort-bridge](https://github.com/jankrib/ha-xcomfort-bridge).
 
-## Contributing & development.
+## Contributing & development
 
 1. Create a parent dir (e.g. `~/xcomfort`)
 2. Clone (your fork) of this repo. (e.g. `git clone git@github.com:javydekoning/ha-xcomfort-bridge.git -b dev`)
@@ -53,7 +54,10 @@ logger:
 6. Run the linter before opening PR!
 
 ```bash
+# Ruff
 uvx ruff check --config .github/linters/.ruff.toml --fix
+# Megalinter
+npx mega-linter-runner --fix
 ```
 
 ## Using events in automations

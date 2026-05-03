@@ -20,7 +20,14 @@ _LOGGER = logging.getLogger(__name__)
 class XComfortHub:
     """Hub wrapper for xComfort bridge communication."""
 
-    def __init__(self, hass: HomeAssistant, identifier: str, ip: str, auth_key: str, entry: ConfigEntry):
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        identifier: str,
+        ip: str,
+        auth_key: str,
+        entry: ConfigEntry,
+    ):
         """Initialize underlying bridge."""
         bridge = Bridge(ip, auth_key)
         self.hass = hass
@@ -57,6 +64,11 @@ class XComfortHub:
         self.rooms = rooms.values()
 
         _LOGGER.info("loaded %s rooms", len(self.rooms))
+
+        scenes = await self.bridge.get_scenes()
+        self.scenes = scenes.values()
+
+        _LOGGER.info("loaded %s scenes", len(self.scenes))
 
         self.has_done_initial_load.set()
 

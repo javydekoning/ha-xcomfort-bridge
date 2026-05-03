@@ -11,9 +11,11 @@ from .comp import Comp, CompState  # noqa: F401
 from .connection import SecureBridgeConnection, setup_secure_connection
 from .constants import ClimateMode, ComponentTypes, DeviceTypes, Messages
 from .devices import (
+    Appliance,
     BridgeDevice,
     DoorSensor,
     Heater,
+    HeatingValve,
     Light,
     RcTouch,
     Rocker,
@@ -23,6 +25,7 @@ from .devices import (
 
 # Some HA code relies on bridge having imported these:
 from .room import RctModeRange, Room, RoomState  # noqa: F401
+from .scene import Scene
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -63,6 +66,7 @@ class Bridge:
         self._comps = {}
         self._devices = {}
         self._rooms = {}
+        self._scenes = {}
         self.state = State.Uninitialized
         self.on_initialized = asyncio.Event()
         self.connection = None
@@ -74,12 +78,13 @@ class Bridge:
         self.bridge_type = None
         self.fw_version = None
         self.home_scenes_count = 0
+        self.home_scene_ids = []
         self.home_data = {}
 
         # Bridge state (for sensors)
         self.bridge_state = rx.subject.BehaviorSubject(None)
 
-        self.logger = lambda x: _LOGGER.warning(x)
+        self.logger = _LOGGER.warning
 
         _LOGGER.info("Initialized xComfort bridge for %s", ip_address)
 
@@ -97,6 +102,11 @@ class Bridge:
     def rooms(self):
         """Get rooms dictionary."""
         return self._rooms
+
+    @property
+    def scenes(self):
+        """Get scenes dictionary."""
+        return self._scenes
 
     async def run(self):
         """Run the bridge main loop."""
@@ -150,7 +160,12 @@ class Bridge:
     def _add_device(self, device):
         """Add a device to the bridge."""
         self._devices[device.device_id] = device
-        _LOGGER.debug("Added device: %s (id: %s, type: %s)", device.name, device.device_id, type(device).__name__)
+        _LOGGER.debug(
+            "Added device: %s (id: %s, type: %s)",
+            device.name,
+            device.device_id,
+            type(device).__name__,
+        )
 
         # Log component-to-device relationship if it exists
         if hasattr(device, "comp_id"):
@@ -179,6 +194,11 @@ class Bridge:
         self._rooms[room.room_id] = room
         _LOGGER.debug("Added room: %s (id: %s)", room.name, room.room_id)
 
+    def _add_scene(self, scene):
+        """Add a scene to the bridge."""
+        self._scenes[scene.scene_id] = scene
+        _LOGGER.debug("Added scene: %s (id: %s)", scene.name, scene.scene_id)
+
     def _handle_SET_DEVICE_STATE(self, payload):
         """Handle device state updates."""
         try:
@@ -190,7 +210,9 @@ class Bridge:
                 potential_rctouch_id = device_id - 1
                 potential_rctouch = self._devices.get(potential_rctouch_id)
 
-                if potential_rctouch is not None and isinstance(potential_rctouch, RcTouch):
+                if potential_rctouch is not None and isinstance(
+                    potential_rctouch, RcTouch
+                ):
                     _LOGGER.debug(
                         "Redirecting state update for virtual rocker %s to RcTouch %s",
                         device_id,
@@ -200,13 +222,17 @@ class Bridge:
                     potential_rctouch.handle_virtual_rocker_state(payload)
                     return
 
-                _LOGGER.warning("Received state update for unknown device: %s", device_id)
+                _LOGGER.warning(
+                    "Received state update for unknown device: %s", device_id
+                )
                 return
 
             _LOGGER.debug("Updating device state for %s: %s", device.name, payload)
             device.handle_state(payload)
         except KeyError:
-            _LOGGER.warning("Received state update for unknown device: %s", payload.get("deviceId"))
+            _LOGGER.warning(
+                "Received state update for unknown device: %s", payload.get("deviceId")
+            )
             return
 
     def _handle_SET_STATE_INFO(self, payload):
@@ -224,7 +250,9 @@ class Bridge:
                     potential_rctouch_id = deviceId - 1
                     potential_rctouch = self._devices.get(potential_rctouch_id)
 
-                    if potential_rctouch is not None and isinstance(potential_rctouch, RcTouch):
+                    if potential_rctouch is not None and isinstance(
+                        potential_rctouch, RcTouch
+                    ):
                         _LOGGER.debug(
                             "Redirecting state update for virtual rocker %s to RcTouch %s",
                             deviceId,
@@ -234,7 +262,11 @@ class Bridge:
                         potential_rctouch.handle_virtual_rocker_state(item)
                         continue
 
-                    _LOGGER.warning("Received state update for unknown device %s: %s", deviceId, item)
+                    _LOGGER.warning(
+                        "Received state update for unknown device %s: %s",
+                        deviceId,
+                        item,
+                    )
 
             elif "roomId" in item:
                 roomId = item["roomId"]
@@ -243,7 +275,9 @@ class Bridge:
                     _LOGGER.debug("State update for room %s: %s", room.name, item)
                     room.handle_state(item)
                 else:
-                    _LOGGER.warning("Received state update for unknown room %s: %s", roomId, item)
+                    _LOGGER.warning(
+                        "Received state update for unknown room %s: %s", roomId, item
+                    )
 
             elif "compId" in item:
                 compId = item["compId"]
@@ -252,10 +286,16 @@ class Bridge:
                     _LOGGER.debug("State update for component %s: %s", comp.name, item)
                     comp.handle_state(item)
                 else:
-                    _LOGGER.warning("Received state update for unknown component %s: %s", compId, item)
+                    _LOGGER.warning(
+                        "Received state update for unknown component %s: %s",
+                        compId,
+                        item,
+                    )
 
             else:
-                _LOGGER.warning("Unknown state info item (no deviceId, roomId, or compId): %s", item)
+                _LOGGER.warning(
+                    "Unknown state info item (no deviceId, roomId, or compId): %s", item
+                )
 
     def _create_comp_from_payload(self, payload):
         """Create a component from payload data."""
@@ -273,8 +313,13 @@ class Bridge:
         comp_id = payload["compId"]
 
         _LOGGER.debug(
-            "Creating device from payload: id=%s, name=%s, devType=%s, compId=%s", device_id, name, dev_type, comp_id
+            "Creating device from payload: id=%s, name=%s, devType=%s, compId=%s",
+            device_id,
+            name,
+            dev_type,
+            comp_id,
         )
+        _LOGGER.debug("Full device payload: %s", payload)
 
         # Log component relationship from payload (before device creation)
         comp = self._comps.get(comp_id)
@@ -298,22 +343,30 @@ class Bridge:
             )
 
         if dev_type in (DeviceTypes.ACTUATOR_SWITCH, DeviceTypes.ACTUATOR_DIMM):
-            if payload.get("usage") == 0:
-                # If usage = 1 then it's configured as a "load",
-                # and not as a light.
-                dimmable = payload["dimmable"]
+            usage = payload.get("usage", 0)
+            dimmable = payload.get("dimmable", dev_type == DeviceTypes.ACTUATOR_DIMM)
+
+            if usage == 0:
+                # usage=0 is categorized as a light in xComfort.
                 _LOGGER.debug("Creating Light device (dimmable=%s)", dimmable)
                 return Light(self, device_id, name, dimmable, comp_id)
+            # usage!=0 is categorized as appliance/load in xComfort.
+            _LOGGER.debug("Creating Appliance device (usage=%s)", usage)
+            return Appliance(self, device_id, name, comp_id)
 
-        elif dev_type == DeviceTypes.SHADING_ACTUATOR:
+        if dev_type == DeviceTypes.SHADING_ACTUATOR:
             _LOGGER.debug("Creating Shade device")
             return Shade(self, device_id, name, comp_id, payload)
 
-        elif dev_type == DeviceTypes.HEATING_ACTUATOR:
+        if dev_type == DeviceTypes.ACTUATOR_HEATING:
             _LOGGER.debug("Creating Heater device")
             return Heater(self, device_id, name, comp_id)
 
-        elif dev_type == DeviceTypes.RC_TOUCH:
+        if dev_type == DeviceTypes.HEATING_VALVE:
+            _LOGGER.debug("Creating HeatingValve device")
+            return HeatingValve(self, device_id, name, comp_id)
+
+        if dev_type == DeviceTypes.RC_TOUCH:
             _LOGGER.debug("Creating RcTouch device")
             rctouch = RcTouch(self, device_id, name, comp_id)
 
@@ -334,7 +387,7 @@ class Bridge:
 
             return rctouch
 
-        elif dev_type == DeviceTypes.SWITCH:
+        if dev_type == DeviceTypes.SWITCH:
             component: Comp | None = self._comps.get(comp_id)
             if component and component.comp_type == ComponentTypes.DOOR_WINDOW_SENSOR:
                 if component.payload.get("mode") == "1310":
@@ -342,6 +395,40 @@ class Bridge:
                     return DoorSensor(self, device_id, name, comp_id, payload)
                 _LOGGER.debug("Creating WindowSensor device")
                 return WindowSensor(self, device_id, name, comp_id, payload)
+
+        elif dev_type in (
+            DeviceTypes.MOTION_SENSOR,
+            DeviceTypes.ROCKER_SENSOR,
+            DeviceTypes.ROCKER_BINARY_INPUT,
+        ):
+            # devType 200/201/211 — push switch or rocker channels on sensors
+            # and binary inputs.  The component type determines the real role.
+            component = self._comps.get(comp_id)
+            pushbutton_comp_types = (
+                ComponentTypes.PUSH_BUTTON_1_CHANNEL,
+                ComponentTypes.PUSH_BUTTON_2_CHANNEL,
+                ComponentTypes.PUSH_BUTTON_4_CHANNEL,
+                ComponentTypes.PUSH_BUTTON_MULTI_SENSOR_1_CHANNEL,
+                ComponentTypes.PUSH_BUTTON_MULTI_SENSOR_2_CHANNEL,
+                ComponentTypes.PUSH_BUTTON_MULTI_SENSOR_4_CHANNEL,
+                ComponentTypes.BINARY_INPUT_230V,
+                ComponentTypes.BINARY_INPUT_BATTERY,
+            )
+            if component and component.comp_type in pushbutton_comp_types:
+                _LOGGER.debug(
+                    "Creating Rocker device for devType %s on comp %s (compType %s)",
+                    dev_type,
+                    comp_id,
+                    component.comp_type,
+                )
+                return Rocker(self, device_id, name, comp_id, payload)
+
+            _LOGGER.debug(
+                "devType %s on comp %s (compType %s) — not a pushbutton, creating generic device",
+                dev_type,
+                comp_id,
+                component.comp_type if component else "unknown",
+            )
 
         elif dev_type == DeviceTypes.ROCKER:
             # Check if this is a virtual rocker for an RcTouch device
@@ -375,6 +462,26 @@ class Bridge:
 
         return Room(self, room_id, name)
 
+    def _create_scene_from_payload(self, payload):
+        """Create a scene from payload data."""
+        scene_id = payload["sceneId"]
+        name = payload.get("name", f"Scene {scene_id}")
+
+        return Scene(self, scene_id, name, payload)
+
+    def _handle_scene_payload(self, payload):
+        """Handle scene payload."""
+        scene_id = payload["sceneId"]
+        scene = self._scenes.get(scene_id)
+
+        if scene is None:
+            scene = self._create_scene_from_payload(payload)
+            if scene is None:
+                return
+            self._add_scene(scene)
+        else:
+            scene.update(payload)
+
     def _handle_comp_payload(self, payload):
         """Handle component payload."""
         comp_id = payload["compId"]
@@ -391,7 +498,7 @@ class Bridge:
 
         comp.handle_state(payload)
 
-    def _handle_device_payload(self, payload):
+    def _handle_device_payload(self, payload, emit_button_event: bool = True):
         """Handle device payload."""
         device_id = payload["deviceId"]
 
@@ -405,7 +512,10 @@ class Bridge:
 
             self._add_device(device)
 
-        device.handle_state(payload)
+        if isinstance(device, Rocker):
+            device.handle_state(payload, emit_button_event=emit_button_event)
+        else:
+            device.handle_state(payload)
 
     def _handle_room_payload(self, payload):
         """Handle room payload."""
@@ -430,7 +540,10 @@ class Bridge:
             self.on_initialized.set()
             _LOGGER.info("Bridge initialization complete - all data loaded")
             _LOGGER.info(
-                "Loaded %d devices, %d components, %d rooms", len(self._devices), len(self._comps), len(self._rooms)
+                "Loaded %d devices, %d components, %d rooms",
+                len(self._devices),
+                len(self._comps),
+                len(self._rooms),
             )
 
             # Log all component-device relationships after initialization
@@ -459,15 +572,22 @@ class Bridge:
             _LOGGER.debug("=== End Component-Device Relationships ===")
 
         if "devices" in payload:
-            _LOGGER.debug("Processing %d devices from SET_ALL_DATA", len(payload["devices"]))
+            _LOGGER.debug(
+                "Processing %d devices from SET_ALL_DATA", len(payload["devices"])
+            )
             for device_payload in payload["devices"]:
                 try:
-                    self._handle_device_payload(device_payload)
+                    # Initial snapshots must not emit button events.
+                    self._handle_device_payload(device_payload, emit_button_event=False)
                 except (KeyError, ValueError):
-                    _LOGGER.exception("Failed to handle device payload: %s", device_payload)
+                    _LOGGER.exception(
+                        "Failed to handle device payload: %s", device_payload
+                    )
 
         if "comps" in payload:
-            _LOGGER.debug("Processing %d components from SET_ALL_DATA", len(payload["comps"]))
+            _LOGGER.debug(
+                "Processing %d components from SET_ALL_DATA", len(payload["comps"])
+            )
             for comp_payload in payload["comps"]:
                 try:
                     self._handle_comp_payload(comp_payload)
@@ -475,20 +595,39 @@ class Bridge:
                     _LOGGER.exception("Failed to handle comp payload: %s", comp_payload)
 
         if "rooms" in payload:
-            _LOGGER.debug("Processing %d rooms from SET_ALL_DATA", len(payload["rooms"]))
+            _LOGGER.debug(
+                "Processing %d rooms from SET_ALL_DATA", len(payload["rooms"])
+            )
             for room_payload in payload["rooms"]:
                 try:
                     self._handle_room_payload(room_payload)
                 except (KeyError, ValueError):
                     _LOGGER.exception("Failed to handle room payload: %s", room_payload)
 
+        if "scenes" in payload:
+            _LOGGER.debug(
+                "Processing %d scenes from SET_ALL_DATA", len(payload["scenes"])
+            )
+            for scene_payload in payload["scenes"]:
+                try:
+                    self._handle_scene_payload(scene_payload)
+                except (KeyError, ValueError):
+                    _LOGGER.exception(
+                        "Failed to handle scene payload: %s", scene_payload
+                    )
+
         if "roomHeating" in payload:
-            _LOGGER.debug("Processing %d room heating configs from SET_ALL_DATA", len(payload["roomHeating"]))
+            _LOGGER.debug(
+                "Processing %d room heating configs from SET_ALL_DATA",
+                len(payload["roomHeating"]),
+            )
             for room_payload in payload["roomHeating"]:
                 try:
                     self._handle_room_payload(room_payload)
                 except (KeyError, ValueError):
-                    _LOGGER.exception("Failed to handle room heating payload: %s", room_payload)
+                    _LOGGER.exception(
+                        "Failed to handle room heating payload: %s", room_payload
+                    )
 
     def _handle_SET_HOME_DATA(self, payload):
         """Handle home data updates."""
@@ -502,6 +641,7 @@ class Bridge:
 
         # Extract home scenes count
         home_scenes = payload.get("homeScenes", [])
+        self.home_scene_ids = list(home_scenes)
         self.home_scenes_count = len(home_scenes)
 
         _LOGGER.debug(
@@ -512,6 +652,30 @@ class Bridge:
             self.fw_version,
             self.home_scenes_count,
         )
+
+    def _handle_SET_SCENE(self, payload):
+        """Handle scene updates."""
+        if "sceneId" not in payload:
+            _LOGGER.warning("SET_SCENE payload missing sceneId: %s", payload)
+            return
+        self._handle_scene_payload(payload)
+
+    def _handle_SET_SCENE_ID(self, payload):
+        """Handle scene updates by ID."""
+        if "sceneId" not in payload:
+            _LOGGER.warning("SET_SCENE_ID payload missing sceneId: %s", payload)
+            return
+        self._handle_scene_payload(payload)
+
+    def _handle_SCENE_DELETED(self, payload):
+        """Handle scene deletion."""
+        scene_id = payload.get("sceneId")
+        if scene_id is None:
+            _LOGGER.warning("SCENE_DELETED payload missing sceneId: %s", payload)
+            return
+        removed = self._scenes.pop(scene_id, None)
+        if removed:
+            _LOGGER.info("Removed scene %s (id: %s)", removed.name, scene_id)
 
     def _handle_SET_BRIDGE_STATE(self, payload):
         """Handle bridge state updates for sensors."""
@@ -545,23 +709,38 @@ class Bridge:
             except ValueError:
                 # Unknown message type - log and skip
                 _LOGGER.warning(
-                    "Unknown message type: %s (payload: %s)", message.get("type_int"), message.get("payload")
+                    "Unknown message type: %s (payload: %s)",
+                    message.get("type_int"),
+                    message.get("payload"),
                 )
                 return
 
-            method = getattr(self, method_name, lambda p: self._handle_UNKNOWN(message_type, p))
+            method = getattr(
+                self, method_name, lambda p: self._handle_UNKNOWN(message_type, p)
+            )
             try:
                 method(message["payload"])
             except (KeyError, ValueError):
                 _LOGGER.exception("Error handling %s", method_name)
+            except Exception:
+                _LOGGER.exception(
+                    "Unhandled exception while handling %s (message_type=%s, payload=%s)",
+                    method_name,
+                    message_type.name,
+                    message["payload"],
+                )
         else:
             _LOGGER.warning("Received message without payload: %s", message)
 
     async def _connect(self):
         """Establish connection to bridge."""
         _LOGGER.debug("Setting up secure connection to bridge")
-        self.connection = await setup_secure_connection(self._session, self.ip_address, self.authkey)
-        self.connection_subscription = self.connection.messages.subscribe(self._onMessage)
+        self.connection = await setup_secure_connection(
+            self._session, self.ip_address, self.authkey
+        )
+        self.connection_subscription = self.connection.messages.subscribe(
+            self._onMessage
+        )
 
         # Extract firmware version from connection
         self.fw_version = self.connection.device_version
@@ -593,7 +772,12 @@ class Bridge:
 
         _LOGGER.debug("Getting all components - total count: %d", len(self._comps))
         for comp_id, comp in self._comps.items():
-            _LOGGER.debug("Component: id=%s, name=%s, type=%s", comp_id, comp.name, type(comp).__name__)
+            _LOGGER.debug(
+                "Component: id=%s, name=%s, type=%s",
+                comp_id,
+                comp.name,
+                type(comp).__name__,
+            )
 
         return self._comps
 
@@ -603,7 +787,12 @@ class Bridge:
 
         _LOGGER.debug("Getting all devices - total count: %d", len(self._devices))
         for device_id, device in self._devices.items():
-            _LOGGER.debug("Device: id=%s, name=%s, type=%s", device_id, device.name, type(device).__name__)
+            _LOGGER.debug(
+                "Device: id=%s, name=%s, type=%s",
+                device_id,
+                device.name,
+                type(device).__name__,
+            )
 
         return self._devices
 
@@ -613,6 +802,23 @@ class Bridge:
 
         _LOGGER.debug("Getting all rooms - total count: %d", len(self._rooms))
         for room_id, room in self._rooms.items():
-            _LOGGER.debug("Room: id=%s, name=%s, type=%s", room_id, room.name, type(room).__name__)
+            _LOGGER.debug(
+                "Room: id=%s, name=%s, type=%s", room_id, room.name, type(room).__name__
+            )
 
         return self._rooms
+
+    async def get_scenes(self):
+        """Get all scenes."""
+        await self.wait_for_initialization()
+
+        _LOGGER.debug("Getting all scenes - total count: %d", len(self._scenes))
+        for scene_id, scene in self._scenes.items():
+            _LOGGER.debug("Scene: id=%s, name=%s", scene_id, scene.name)
+
+        return self._scenes
+
+    async def activate_scene(self, scene_id: int):
+        """Activate a scene by ID."""
+        _LOGGER.debug("Activating scene %s", scene_id)
+        await self.send_message(Messages.ACTIVATE_SCENE, {"sceneId": scene_id})

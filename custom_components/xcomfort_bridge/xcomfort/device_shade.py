@@ -88,6 +88,3 @@ class Shade(BridgeDevice):
     def __str__(self) -> str:
         """Return string representation of shade device."""
         return f"<Shade device_id={self.device_id} name={self.name} state={self.state} supports_go_to={self.supports_go_to}>"
-
-
-

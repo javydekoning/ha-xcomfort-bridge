@@ -1,4 +1,5 @@
 """Support for xComfort Bridge cover shades."""
+
 import logging
 
 from homeassistant.components.cover import (
@@ -12,13 +13,21 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
+from .entity_lifecycle import (
+    init_entity_lifecycle,
+    mark_entity_added,
+    schedule_state_update_safely,
+    subscribe_observable,
+)
 from .hub import XComfortHub
 from .xcomfort.devices import Shade
 
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
+async def async_setup_entry(
+    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
+) -> None:
     """Set up the xComfort Bridge covers from a config entry."""
     hub = XComfortHub.get_hub(hass, entry)
 
@@ -63,6 +72,7 @@ class HASSXComfortShade(CoverEntity):
         self.device_id = device.device_id
 
         self._unique_id = f"shade_{DOMAIN}_{hub.identifier}-{device.device_id}"
+        init_entity_lifecycle(self)
 
     @property
     def device_class(self):
@@ -71,11 +81,12 @@ class HASSXComfortShade(CoverEntity):
 
     async def async_added_to_hass(self):
         """Run when entity about to be added to hass."""
+        await super().async_added_to_hass()
+        mark_entity_added(self)
         _LOGGER.debug("Added to hass %s", self._name)  # Changed from f-string
-        if self._device.state is None:
-            _LOGGER.debug("State is null for %s", self._name)  # Changed from f-string
-        else:
-            self._device.state.subscribe(lambda state: self._state_change(state))
+        subscribe_observable(
+            self, self._device.state, self._state_change, "device.state"
+        )
 
     def _state_change(self, state):
         """Handle state changes."""
@@ -83,10 +94,12 @@ class HASSXComfortShade(CoverEntity):
 
         should_update = self._state is not None
 
-        _LOGGER.debug("State changed %s : %s", self._name, state)  # Changed from f-string
+        _LOGGER.debug(
+            "State changed %s : %s", self._name, state
+        )  # Changed from f-string
 
         if should_update:
-            self.schedule_update_ha_state()
+            schedule_state_update_safely(self, "device.state")
 
     @property
     def is_closed(self) -> bool | None:
@@ -125,7 +138,9 @@ class HASSXComfortShade(CoverEntity):
     @property
     def supported_features(self):
         """Flag supported features."""
-        supported_features = CoverEntityFeature.OPEN | CoverEntityFeature.CLOSE | CoverEntityFeature.STOP
+        supported_features = (
+            CoverEntityFeature.OPEN | CoverEntityFeature.CLOSE | CoverEntityFeature.STOP
+        )
         if self._device.supports_go_to:
             supported_features |= CoverEntityFeature.SET_POSITION
         return supported_features

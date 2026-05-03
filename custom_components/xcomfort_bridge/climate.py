@@ -16,18 +16,31 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
+from .entity_lifecycle import (
+    init_entity_lifecycle,
+    mark_entity_added,
+    schedule_state_update_safely,
+    subscribe_observable,
+)
 from .hub import XComfortHub
 from .xcomfort.bridge import Room
 from .xcomfort.constants import ClimateMode, ClimateState, Messages
 from .xcomfort.devices import RcTouch
 
-SUPPORT_FLAGS = ClimateEntityFeature.TARGET_TEMPERATURE | ClimateEntityFeature.PRESET_MODE
+SUPPORT_FLAGS = (
+    ClimateEntityFeature.TARGET_TEMPERATURE
+    | ClimateEntityFeature.PRESET_MODE
+    | ClimateEntityFeature.TURN_ON
+    | ClimateEntityFeature.TURN_OFF
+)
 
 
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
+async def async_setup_entry(
+    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
+) -> None:
     """Set up the xComfort climate platform.
 
     Args:
@@ -66,12 +79,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
                             _LOGGER.debug(
                                 "Room '%s' linked to sensor device '%s' (ID: %d)",
                                 room.name,
-                                sensor_device.name if hasattr(sensor_device, "name") else "Unknown",
+                                sensor_device.name
+                                if hasattr(sensor_device, "name")
+                                else "Unknown",
                                 room_sensor_id,
                             )
 
-                    _LOGGER.debug("Creating climate entity for room '%s' (temperatureOnly=False)", room.name)
-                    climate_entity = HASSXComfortRoomClimate(hass, hub, room, sensor_device)
+                    _LOGGER.debug(
+                        "Creating climate entity for room '%s' (temperatureOnly=False)",
+                        room.name,
+                    )
+                    climate_entity = HASSXComfortRoomClimate(
+                        hass, hub, room, sensor_device
+                    )
                     climate_entities.append(climate_entity)
                 else:
                     _LOGGER.debug(
@@ -93,7 +113,13 @@ class HASSXComfortRoomClimate(ClimateEntity):
     # _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT, HVACMode.COOL]
     _attr_supported_features = SUPPORT_FLAGS
 
-    def __init__(self, hass: HomeAssistant, hub: XComfortHub, room: Room, sensor_device: RcTouch | None = None):
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        hub: XComfortHub,
+        room: Room,
+        sensor_device: RcTouch | None = None,
+    ):
         """Initialize the climate device.
 
         Args:
@@ -115,27 +141,32 @@ class HASSXComfortRoomClimate(ClimateEntity):
         self.temperature = 20.0
         self.humidity = 50.0
         self.currentsetpoint = 20.0
+        self._last_active_state = ClimateState.HeatingAuto
 
         self._unique_id = f"climate_{DOMAIN}_{hub.identifier}-room_{room.room_id}"
+        init_entity_lifecycle(self)
 
     async def async_added_to_hass(self):
         """Run when entity about to be added to hass."""
+        await super().async_added_to_hass()
+        mark_entity_added(self)
 
         _LOGGER.debug("Added to hass room climate %s", self._name)
 
         # Subscribe to room state for all climate data
-        if self._room.state is None:
-            _LOGGER.debug("Room state is null for %s", self._name)
-        else:
-            self._room.state.subscribe(lambda state: self._room_state_change(state))
+        subscribe_observable(
+            self, self._room.state, self._room_state_change, "room.state"
+        )
 
         # Optionally subscribe to sensor device for temperature and humidity if linked
         if self._sensor_device is not None:
-            if self._sensor_device.state is None:
-                _LOGGER.debug("Sensor device state is null for %s", self._name)
-            else:
-                _LOGGER.debug("Subscribing to sensor device for room %s", self._name)
-                self._sensor_device.state.subscribe(lambda state: self._sensor_device_state_change(state))
+            _LOGGER.debug("Subscribing to sensor device for room %s", self._name)
+            subscribe_observable(
+                self,
+                self._sensor_device.state,
+                self._sensor_device_state_change,
+                "sensor_device.state",
+            )
 
     def _room_state_change(self, state):
         """Handle room state changes for climate control.
@@ -153,6 +184,9 @@ class HASSXComfortRoomClimate(ClimateEntity):
                 self.rctpreset = ClimateMode(state.raw["mode"])
             if "state" in state.raw:
                 self.rctstate = ClimateState(state.raw["state"])
+                # Track last non-off state so we can restore it
+                if self.rctstate != ClimateState.Off:
+                    self._last_active_state = self.rctstate
             self.currentsetpoint = state.setpoint
 
             # Get temperature and humidity from room state (may be overridden by sensor device)
@@ -161,9 +195,14 @@ class HASSXComfortRoomClimate(ClimateEntity):
             if state.humidity is not None:
                 self.humidity = state.humidity
 
-            _LOGGER.debug("Room state changed %s : %s (ClimateState: %s)", self._name, state, self.rctstate.name)
+            _LOGGER.debug(
+                "Room state changed %s : %s (ClimateState: %s)",
+                self._name,
+                state,
+                self.rctstate.name,
+            )
 
-            self.schedule_update_ha_state()
+            schedule_state_update_safely(self, "room.state")
 
     def _sensor_device_state_change(self, state):
         """Handle sensor device state changes for temperature and humidity.
@@ -174,8 +213,10 @@ class HASSXComfortRoomClimate(ClimateEntity):
         """
         if state is not None:
             # Sensor device readings override room readings
-            self.temperature = state.temperature
-            self.humidity = state.humidity
+            if state.temperature is not None:
+                self.temperature = state.temperature
+            if state.humidity is not None:
+                self.humidity = state.humidity
 
             _LOGGER.debug(
                 "Sensor device state changed for room %s : temp=%s, humidity=%s",
@@ -184,7 +225,7 @@ class HASSXComfortRoomClimate(ClimateEntity):
                 state.humidity,
             )
 
-            self.schedule_update_ha_state()
+            schedule_state_update_safely(self, "sensor_device.state")
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode):
         """Set new HVAC mode.
@@ -192,31 +233,39 @@ class HASSXComfortRoomClimate(ClimateEntity):
         Args:
             hvac_mode: The new HVAC mode to set (OFF, HEAT, or COOL)
 
+        The bridge requires ``confirmed=True`` for HVAC state transitions
+        (off ↔ heat ↔ cool).  Preset and setpoint changes use ``confirmed=False``.
+
         """
         _LOGGER.debug("Set HVAC mode %s", hvac_mode)
 
-        # Map HVAC mode to ClimateState
-        if hvac_mode == HVACMode.OFF:  # 'mode': 1, 'state': 0, 'setpoint': 0.0
+        if hvac_mode == HVACMode.OFF:
             new_state = ClimateState.Off
-        elif hvac_mode == HVACMode.HEAT:  # 'mode': 3, 'state': 1, 'setpoint': 22.0
-            new_state = ClimateState.HeatingAuto
+        elif hvac_mode == HVACMode.HEAT:
+            # Preserve auto/manual from last active state
+            if self._last_active_state == ClimateState.HeatingManual:
+                new_state = ClimateState.HeatingManual
+            else:
+                new_state = ClimateState.HeatingAuto
         elif hvac_mode == HVACMode.COOL:
-            new_state = ClimateState.CoolingAuto  # 'mode': 3, 'state': 3, 'setpoint': 0.0,
+            if self._last_active_state == ClimateState.CoolingManual:
+                new_state = ClimateState.CoolingManual
+            else:
+                new_state = ClimateState.CoolingAuto
         else:
             _LOGGER.warning("Unsupported HVAC mode: %s", hvac_mode)
             return
 
         if self.rctstate != new_state:
-            # Send message to set the new state
             payload = {
                 "roomId": self._room.room_id,
-                "mode": ClimateMode.FrostProtection.value if new_state == ClimateState.Off else self.rctpreset.value,
                 "state": new_state.value,
-                "setpoint": 0.0 if new_state == ClimateState.Off else self.currentsetpoint,
-                "confirmed": False,
+                "confirmed": True,
             }
             await self._room.bridge.send_message(Messages.SET_HEATING_STATE, payload)
             self.rctstate = new_state
+            if new_state != ClimateState.Off:
+                self._last_active_state = new_state
             self.schedule_update_ha_state()
 
     async def async_set_preset_mode(self, preset_mode):
@@ -250,44 +299,61 @@ class HASSXComfortRoomClimate(ClimateEntity):
             new_setpoint = default_setpoints[mode]
 
             if self.rctstate == ClimateState.Off:
-                _LOGGER.warning("Cannot set mode %s when state is Off", mode.name)
-                return
+                # Turn the room on first before changing preset
+                wake_state = self._last_active_state
+                wake_payload = {
+                    "roomId": self._room.room_id,
+                    "state": wake_state.value,
+                    "confirmed": True,
+                }
+                await self._room.bridge.send_message(
+                    Messages.SET_HEATING_STATE, wake_payload
+                )
+                self.rctstate = wake_state
 
             if mode == ClimateMode.FrostProtection:
                 new_state = ClimateState.HeatingManual
 
             if mode == ClimateMode.Eco:
-                if self.rctstate in [ClimateState.HeatingAuto, ClimateState.HeatingManual]:
+                if self.rctstate in [
+                    ClimateState.HeatingAuto,
+                    ClimateState.HeatingManual,
+                ]:
                     new_state = ClimateState.HeatingManual
                 else:
                     new_state = ClimateState.CoolingManual
 
             if mode == ClimateMode.Comfort:
-                if self.rctstate in [ClimateState.HeatingAuto, ClimateState.HeatingManual]:
+                if self.rctstate in [
+                    ClimateState.HeatingAuto,
+                    ClimateState.HeatingManual,
+                ]:
                     new_state = ClimateState.HeatingManual
                 else:
                     new_state = ClimateState.CoolingManual
 
-            # Step 1: Flip to manual state first.
+            # Step 1: Flip to manual state (auto/manual toggle — no setpoint per app protocol)
             payload_state = {
                 "roomId": self._room.room_id,
                 "mode": self.rctpreset.value,
-                "state": new_state.value,  # Update state first
-                "setpoint": self.currentsetpoint,
+                "state": new_state.value,
                 "confirmed": False,
             }
-            await self._room.bridge.send_message(Messages.SET_HEATING_STATE, payload_state)
-            self.rctstate = ClimateState.HeatingManual
+            await self._room.bridge.send_message(
+                Messages.SET_HEATING_STATE, payload_state
+            )
+            self.rctstate = new_state
 
-            # Step 2: Change the mode (preset) with default setpoint
+            # Step 2: Change the mode/preset (no setpoint per app protocol)
             payload_mode = {
                 "roomId": self._room.room_id,
                 "mode": mode.value,
                 "state": new_state.value,
-                "setpoint": new_setpoint,
                 "confirmed": False,
             }
-            await self._room.bridge.send_message(Messages.SET_HEATING_STATE, payload_mode)
+            await self._room.bridge.send_message(
+                Messages.SET_HEATING_STATE, payload_mode
+            )
             self.rctpreset = mode
             self.rctstate = new_state
             self.currentsetpoint = new_setpoint
@@ -308,7 +374,9 @@ class HASSXComfortRoomClimate(ClimateEntity):
         # Also consider changing the `mode` object on RoomState class to be just a number,
         # at current it is an object(possibly due to erroneous parsing of the 300/310-messages)
         setpoint = kwargs["temperature"]
-        setpointrange = self._room.bridge.rctsetpointallowedvalues[ClimateMode(self.rctpreset)]
+        setpointrange = self._room.bridge.rctsetpointallowedvalues[
+            ClimateMode(self.rctpreset)
+        ]
 
         setpoint = min(setpointrange.Max, setpoint)
 
@@ -366,8 +434,9 @@ class HASSXComfortRoomClimate(ClimateEntity):
 
     @property
     def hvac_modes(self):
-        """Return available HVAC modes (read-only, only current mode)."""
-        return [self.hvac_mode]
+        """Return available HVAC modes."""
+        # TODO: detect cooling capability from room config and add HVACMode.COOL
+        return [HVACMode.OFF, HVACMode.HEAT]
 
     @property
     def hvac_mode(self):
