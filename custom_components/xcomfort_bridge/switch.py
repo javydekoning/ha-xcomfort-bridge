@@ -4,7 +4,9 @@ import logging
 
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
@@ -26,6 +28,11 @@ async def async_setup_entry(
 ) -> None:
     """Set up xComfort appliance switch devices."""
     hub = XComfortHub.get_hub(hass, entry)
+
+    # Bridge-level toggles are available as soon as the hub exists — don't
+    # wait for device enumeration. The entity reads its own state from the
+    # Rx observable, which resolves once the first SET_BRIDGE_DATA arrives.
+    async_add_entities([XComfortRemoteAccessSwitch(hub)])
 
     async def _wait_for_hub_then_setup():
         await hub.has_done_initial_load.wait()
@@ -126,3 +133,66 @@ class HASSXComfortSwitch(SwitchEntity):
         _LOGGER.debug("Turning appliance switch off: %s", self._name)
         await self._device.switch(False)
         self._set_optimistic_state(False)
+
+
+class XComfortRemoteAccessSwitch(SwitchEntity):
+    """Switch exposing the bridge's 'Allow Remote Access' setting.
+
+    Mirrors the toggle in the official Eaton app: when on, the bridge is
+    permitted to establish an outbound cloud connection to Eaton's
+    web-connect relay. State is pushed via SET_BRIDGE_DATA; the toggle
+    sends SET_REMOTE_CONFIG.
+    """
+
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:cloud-lock-outline"
+    _attr_name = "Allow Remote Access"
+
+    def __init__(self, hub: XComfortHub):
+        """Initialize the remote-access switch bound to the hub device."""
+        self.hub = hub
+        self._is_on: bool | None = None
+        self._attr_unique_id = f"{hub.hub_id}_remote_access"
+        self._attr_device_info = DeviceInfo(identifiers={(DOMAIN, hub.hub_id)})
+        init_entity_lifecycle(self)
+
+    async def async_added_to_hass(self):
+        """Subscribe to bridge state once the entity is live."""
+        await super().async_added_to_hass()
+        mark_entity_added(self)
+        subscribe_observable(
+            self,
+            self.hub.bridge.remote_allowed,
+            self._on_remote_allowed,
+            "bridge.remote_allowed",
+        )
+
+    def _on_remote_allowed(self, value: bool | None) -> None:
+        if value is None:
+            return
+        self._is_on = bool(value)
+        schedule_state_update_safely(self, "bridge.remote_allowed")
+
+    @property
+    def should_poll(self) -> bool:
+        """Return False — state is pushed via Rx observable."""
+        return False
+
+    @property
+    def available(self) -> bool:
+        """Available once the bridge has reported its current remote-access state."""
+        return self._is_on is not None
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return true if remote access is currently allowed."""
+        return self._is_on
+
+    async def async_turn_on(self, **kwargs) -> None:
+        """Enable remote access on the bridge."""
+        await self.hub.bridge.set_remote_access(True)
+
+    async def async_turn_off(self, **kwargs) -> None:
+        """Disable remote access on the bridge."""
+        await self.hub.bridge.set_remote_access(False)

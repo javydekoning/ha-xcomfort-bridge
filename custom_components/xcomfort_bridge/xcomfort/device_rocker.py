@@ -29,15 +29,15 @@ class Rocker(BridgeDevice):
         self.temperature: float | None = None
         self.humidity: float | None = None
         self._sensor_device = None
+        self._comp_subscribed = False
         if "curstate" in payload:
             self.is_on = bool(payload["curstate"])
 
-        # Subscribe to component state updates if this is a multisensor
-        if self.has_sensors:
-            comp = self.bridge._comps.get(self.comp_id)  # noqa: SLF001
-            comp.state.subscribe(lambda _: self._on_component_update())
-            # Find and subscribe to companion sensor device
-            self._find_and_subscribe_sensor_device()
+        # Try to wire up multisensor plumbing now. If the component isn't
+        # known yet (SET_ALL_DATA delivers comps and devices separately),
+        # Bridge._handle_SET_ALL_DATA calls wire_up_sensor_companion again
+        # after all devices are loaded.
+        self.wire_up_sensor_companion()
 
     @property
     def name_with_controlled(self) -> str:
@@ -60,6 +60,25 @@ class Rocker(BridgeDevice):
             ComponentTypes.PUSH_BUTTON_MULTI_SENSOR_2_CHANNEL,
             ComponentTypes.PUSH_BUTTON_MULTI_SENSOR_4_CHANNEL,
         )
+
+    def wire_up_sensor_companion(self) -> None:
+        """Subscribe to component + companion sensor device, if applicable.
+
+        Idempotent — safe to call multiple times. At device construction
+        time the component may not exist yet (SET_ALL_DATA delivers comps
+        and devices as separate sections), so Bridge retries this pass
+        after the initial snapshot is fully loaded.
+        """
+        if not self.has_sensors:
+            return
+
+        if not self._comp_subscribed:
+            comp = self.bridge._comps.get(self.comp_id)  # noqa: SLF001
+            if comp is not None:
+                comp.state.subscribe(lambda _: self._on_component_update())
+                self._comp_subscribed = True
+
+        self._find_and_subscribe_sensor_device()
 
     def _find_and_subscribe_sensor_device(self) -> None:
         """Find companion sensor device and subscribe to its updates.
@@ -240,9 +259,8 @@ class Rocker(BridgeDevice):
 
         # For multisensor rockers, include sensor data in state
         if self.has_sensors:
-            # Try to find sensor device if we haven't found it yet
-            if self._sensor_device is None:
-                self._find_and_subscribe_sensor_device()
+            # Idempotent — reconnects late if comp/companion arrived after init.
+            self.wire_up_sensor_companion()
 
             _LOGGER.debug(
                 "Rocker %s state update: %s, temp=%s°C, humidity=%s%%",

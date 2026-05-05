@@ -20,6 +20,15 @@ from .constants import Messages
 _LOGGER = logging.getLogger(__name__)
 
 
+class InvalidAuth(ConnectionError):
+    """Raised when the bridge rejects the supplied credentials.
+
+    Distinct from generic ConnectionError so that callers (config flow,
+    the run-loop) can stop retrying — a bad auth key will never succeed
+    until the user fixes it.
+    """
+
+
 class ConnectionState(IntEnum):
     """Connection state enumeration."""
 
@@ -60,8 +69,8 @@ def _raise_connection_error(msg):
 
 
 def _raise_login_error(msg):
-    """Raise login error."""
-    raise ConnectionError(msg)
+    """Raise login error (invalid auth key)."""
+    raise InvalidAuth(msg)
 
 
 def _raise_secure_connection_error(msg):

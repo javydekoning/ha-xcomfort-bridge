@@ -51,7 +51,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Wait for bridge to initialize and get firmware info
     await hub.bridge.wait_for_initialization()
 
-    # Wait a bit for bridge info (firmware, name, type) to arrive in SET_HOME_DATA message
+    # Wait a bit for bridge info (firmware, name, type) to arrive in SET_BRIDGE_DATA message
     # This message arrives after wait_for_initialization completes
     await asyncio.sleep(1)
 

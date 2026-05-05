@@ -20,6 +20,10 @@
     },
     "abort": {
       "no_devices_found": "No Eaton xComfort Bridge devices found on the network."
+    },
+    "error": {
+      "invalid_auth": "Invalid auth key. Check the key shown in the xComfort Bridge app and try again.",
+      "cannot_connect": "Could not reach the xComfort Bridge at the given IP address."
     }
   },
   "device_automation": {
