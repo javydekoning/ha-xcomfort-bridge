@@ -8,6 +8,7 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.const import CONF_IP_ADDRESS
 from homeassistant.data_entry_flow import section
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.device_registry import format_mac
 from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 
@@ -22,6 +23,7 @@ from .const import (
     CONF_POWER_ENERGY_SECTION,
     DOMAIN,
 )
+from .xcomfort.connection import InvalidAuth, setup_secure_connection
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -36,6 +38,31 @@ IDENTIFIER_AND_AUTH = vol.Schema(
 
 # If added manually, we'll also need the IP address:
 FULL_CONFIG = IDENTIFIER_AND_AUTH.extend({vol.Required(CONF_IP_ADDRESS): str})
+
+
+async def _validate_credentials(hass, ip: str, auth_key: str) -> str | None:
+    """Probe the bridge with the given credentials.
+
+    Returns an error code ("invalid_auth" / "cannot_connect") suitable for
+    `async_show_form(errors=...)`, or None on success.
+    """
+    session = async_get_clientsession(hass)
+    try:
+        connection = await setup_secure_connection(session, ip, auth_key)
+    except InvalidAuth:
+        _LOGGER.warning("Bridge at %s rejected the supplied auth key", ip)
+        return "invalid_auth"
+    except (ConnectionError, OSError) as err:
+        _LOGGER.warning("Could not reach bridge at %s: %r", ip, err)
+        return "cannot_connect"
+    except Exception:
+        _LOGGER.exception("Unexpected error while validating bridge credentials")
+        return "cannot_connect"
+    else:
+        # Handshake succeeded — close the probe connection; the integration
+        # will open its own long-lived one during entry setup.
+        await connection.close()
+        return None
 
 
 @config_entries.HANDLERS.register(DOMAIN)
@@ -99,33 +126,54 @@ class XComfortBridgeConfigFlow(config_entries.ConfigFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
         """Handle the authentication step of config flow."""
+        errors: dict[str, str] = {}
         if user_input is not None:
-            self.data[CONF_AUTH_KEY] = user_input[CONF_AUTH_KEY]
-            self.data[CONF_IDENTIFIER] = user_input.get(CONF_IDENTIFIER)
-
-            return self.async_create_entry(
-                title=self.title,
-                data=self.data,
+            error = await _validate_credentials(
+                self.hass,
+                self.data[CONF_IP_ADDRESS],
+                user_input[CONF_AUTH_KEY],
             )
-        return self.async_show_form(step_id="auth", data_schema=IDENTIFIER_AND_AUTH)
+            if error is None:
+                self.data[CONF_AUTH_KEY] = user_input[CONF_AUTH_KEY]
+                self.data[CONF_IDENTIFIER] = user_input.get(CONF_IDENTIFIER)
+
+                return self.async_create_entry(
+                    title=self.title,
+                    data=self.data,
+                )
+            errors["base"] = error
+
+        return self.async_show_form(
+            step_id="auth", data_schema=IDENTIFIER_AND_AUTH, errors=errors
+        )
 
     async def async_step_user(self, user_input=None):
         """Handle a onboarding flow initiated by the user."""
+        errors: dict[str, str] = {}
         if user_input is not None:
-            self.data[CONF_IP_ADDRESS] = user_input[CONF_IP_ADDRESS]
-            self.data[CONF_AUTH_KEY] = user_input[CONF_AUTH_KEY]
-            self.data[CONF_IDENTIFIER] = user_input.get(CONF_IDENTIFIER)
-
-            await self.async_set_unique_id(
-                f"{user_input[CONF_IDENTIFIER]}/{user_input[CONF_IP_ADDRESS]}"
+            error = await _validate_credentials(
+                self.hass,
+                user_input[CONF_IP_ADDRESS],
+                user_input[CONF_AUTH_KEY],
             )
+            if error is None:
+                self.data[CONF_IP_ADDRESS] = user_input[CONF_IP_ADDRESS]
+                self.data[CONF_AUTH_KEY] = user_input[CONF_AUTH_KEY]
+                self.data[CONF_IDENTIFIER] = user_input.get(CONF_IDENTIFIER)
 
-            return self.async_create_entry(
-                title=self.title,
-                data=self.data,
-            )
+                await self.async_set_unique_id(
+                    f"{user_input[CONF_IDENTIFIER]}/{user_input[CONF_IP_ADDRESS]}"
+                )
 
-        return self.async_show_form(step_id="user", data_schema=FULL_CONFIG)
+                return self.async_create_entry(
+                    title=self.title,
+                    data=self.data,
+                )
+            errors["base"] = error
+
+        return self.async_show_form(
+            step_id="user", data_schema=FULL_CONFIG, errors=errors
+        )
 
     async def async_step_import(self, import_data: dict):
         """Handle import from configuration.yaml."""

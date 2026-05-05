@@ -143,3 +143,7 @@ config/
 
 # Local workspace
 arbeidsmappe/
+
+# apk decompiled
+apk/
+.devcontainer/devcontainer-lock.json

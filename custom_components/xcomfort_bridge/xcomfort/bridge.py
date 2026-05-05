@@ -8,7 +8,7 @@ import aiohttp
 import rx
 
 from .comp import Comp, CompState  # noqa: F401
-from .connection import SecureBridgeConnection, setup_secure_connection
+from .connection import InvalidAuth, SecureBridgeConnection, setup_secure_connection
 from .constants import ClimateMode, ComponentTypes, DeviceTypes, Messages
 from .devices import (
     Appliance,
@@ -84,6 +84,12 @@ class Bridge:
         # Bridge state (for sensors)
         self.bridge_state = rx.subject.BehaviorSubject(None)
 
+        # Remote-access ("allow cloud connection") state, pushed via SET_BRIDGE_DATA.
+        # `remote_allowed` is the user-configured toggle; `remote_online` reflects
+        # whether the bridge currently has an active cloud link.
+        self.remote_allowed = rx.subject.BehaviorSubject(None)
+        self.remote_online = rx.subject.BehaviorSubject(None)
+
         self.logger = _LOGGER.warning
 
         _LOGGER.info("Initialized xComfort bridge for %s", ip_address)
@@ -123,6 +129,15 @@ class Bridge:
                 _LOGGER.info("Connected to bridge, starting message pump")
                 await self.connection.pump()
 
+            except InvalidAuth:
+                # Credentials will not spontaneously become valid — stop the
+                # loop and let the config entry surface an auth-failed state.
+                _LOGGER.error(
+                    "Bridge rejected credentials; stopping run loop. "
+                    "Remove and re-add the integration with the correct auth key."
+                )
+                self.state = State.Closing
+                raise
             except (ConnectionError, RuntimeError) as e:
                 _LOGGER.error("Connection error: %r, retrying in 5 seconds", e)
                 await asyncio.sleep(5)
@@ -629,8 +644,8 @@ class Bridge:
                         "Failed to handle room heating payload: %s", room_payload
                     )
 
-    def _handle_SET_HOME_DATA(self, payload):
-        """Handle home data updates."""
+    def _handle_SET_BRIDGE_DATA(self, payload):
+        """Handle bridge data updates (formerly SET_HOME_DATA, msg 303)."""
         # Store the full payload for reference
         self.home_data = payload
 
@@ -644,6 +659,13 @@ class Bridge:
         self.home_scene_ids = list(home_scenes)
         self.home_scenes_count = len(home_scenes)
 
+        # Remote-access flags are optional keys — only emit when present so we
+        # don't clobber a known value with None on unrelated SET_BRIDGE_DATA pushes.
+        if "remoteAllowed" in payload:
+            self.remote_allowed.on_next(bool(payload["remoteAllowed"]))
+        if "remoteOnline" in payload:
+            self.remote_online.on_next(bool(payload["remoteOnline"]))
+
         _LOGGER.debug(
             "Bridge info updated: id=%s, name=%s, type=%s, fw=%s, scenes=%s",
             self.bridge_id,
@@ -652,6 +674,21 @@ class Bridge:
             self.fw_version,
             self.home_scenes_count,
         )
+
+    async def set_remote_access(self, allowed: bool) -> None:
+        """Toggle the bridge's remote-access (cloud connection) permission.
+
+        Mirrors the "Allow Remote Access" switch in the Eaton app.
+        Sends SET_REMOTE_CONFIG (288) with {remoteAllowed: bool}; the bridge
+        echoes the new state back via a subsequent SET_BRIDGE_DATA message.
+        """
+        _LOGGER.info("Setting remote access to %s", allowed)
+        await self.send_message(
+            Messages.SET_REMOTE_CONFIG, {"remoteAllowed": bool(allowed)}
+        )
+        # Optimistically publish so the HA switch toggles immediately; the
+        # bridge's own SET_BRIDGE_DATA will reconfirm shortly.
+        self.remote_allowed.on_next(bool(allowed))
 
     def _handle_SET_SCENE(self, payload):
         """Handle scene updates."""
