@@ -586,6 +586,20 @@ class Bridge:
                         )
             _LOGGER.debug("=== End Component-Device Relationships ===")
 
+        # Process components BEFORE devices so that multisensor rockers can
+        # classify themselves correctly at construction time (has_sensors needs
+        # the component record to already exist). This matches the app's
+        # reducer order for SET_ALL_DATA.
+        if "comps" in payload:
+            _LOGGER.debug(
+                "Processing %d components from SET_ALL_DATA", len(payload["comps"])
+            )
+            for comp_payload in payload["comps"]:
+                try:
+                    self._handle_comp_payload(comp_payload)
+                except (KeyError, ValueError):
+                    _LOGGER.exception("Failed to handle comp payload: %s", comp_payload)
+
         if "devices" in payload:
             _LOGGER.debug(
                 "Processing %d devices from SET_ALL_DATA", len(payload["devices"])
@@ -599,15 +613,13 @@ class Bridge:
                         "Failed to handle device payload: %s", device_payload
                     )
 
-        if "comps" in payload:
-            _LOGGER.debug(
-                "Processing %d components from SET_ALL_DATA", len(payload["comps"])
-            )
-            for comp_payload in payload["comps"]:
-                try:
-                    self._handle_comp_payload(comp_payload)
-                except (KeyError, ValueError):
-                    _LOGGER.exception("Failed to handle comp payload: %s", comp_payload)
+            # After all devices are loaded, wire up any multisensor rockers
+            # whose companion sensor device wasn't yet created at the moment
+            # they were constructed. Without this pass, temp/humidity stays
+            # unknown until the user physically presses a button.
+            for device in self._devices.values():
+                if isinstance(device, Rocker) and device.has_sensors:
+                    device.wire_up_sensor_companion()
 
         if "rooms" in payload:
             _LOGGER.debug(
