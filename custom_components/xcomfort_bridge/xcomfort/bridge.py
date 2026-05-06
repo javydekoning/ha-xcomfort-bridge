@@ -7,6 +7,7 @@ import logging
 import aiohttp
 import rx
 
+from .app_info import format_app_info
 from .comp import Comp, CompState  # noqa: F401
 from .connection import InvalidAuth, SecureBridgeConnection, setup_secure_connection
 from .constants import ClimateMode, ComponentTypes, DeviceTypes, Messages
@@ -89,6 +90,11 @@ class Bridge:
         # whether the bridge currently has an active cloud link.
         self.remote_allowed = rx.subject.BehaviorSubject(None)
         self.remote_online = rx.subject.BehaviorSubject(None)
+
+        # Event streams for entity lifecycle — platforms subscribe here to drop
+        # HA entities when the bridge confirms a deletion. Use plain Subject
+        # (not BehaviorSubject) since these are edge events, not state.
+        self.scene_removed = rx.subject.Subject()
 
         self.logger = _LOGGER.warning
 
@@ -725,6 +731,14 @@ class Bridge:
         removed = self._scenes.pop(scene_id, None)
         if removed:
             _LOGGER.info("Removed scene %s (id: %s)", removed.name, scene_id)
+        # Emit regardless: an HA entity may exist from a prior session even if
+        # the bridge-side object is already gone.
+        self.scene_removed.on_next(scene_id)
+
+    def _handle_APP_INFO(self, payload):
+        """Log bridge-side app info notifications in human-readable form."""
+        code, message = format_app_info(payload)
+        _LOGGER.warning("Bridge app info [%s]: %s", code, message)
 
     def _handle_SET_BRIDGE_STATE(self, payload):
         """Handle bridge state updates for sensors."""

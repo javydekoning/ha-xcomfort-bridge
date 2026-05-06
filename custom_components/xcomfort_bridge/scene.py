@@ -24,6 +24,7 @@ async def async_setup_entry(
 ) -> None:
     """Set up xComfort scenes."""
     hub = XComfortHub.get_hub(hass, entry)
+    entities_by_scene_id: dict[int, HASSXComfortScene] = {}
 
     async def _wait_for_hub_then_setup():
         await hub.has_done_initial_load.wait()
@@ -32,11 +33,24 @@ async def async_setup_entry(
         _LOGGER.debug("Found %s xcomfort scenes", len(scenes))
 
         entities = [HASSXComfortScene(hub, scene) for scene in scenes]
+        for entity in entities:
+            entities_by_scene_id[entity.scene_id] = entity
 
         _LOGGER.debug("Added %s scenes", len(entities))
         async_add_entities(entities)
 
     entry.async_create_task(hass, _wait_for_hub_then_setup())
+
+    def _on_scene_removed(scene_id: int) -> None:
+        """Drop the HA entity when the bridge reports a scene deletion."""
+        entity = entities_by_scene_id.pop(scene_id, None)
+        if entity is None:
+            return
+        _LOGGER.info("Removing HA scene entity for deleted scene (id=%s)", scene_id)
+        hass.async_create_task(entity.async_remove(force_remove=True))
+
+    subscription = hub.bridge.scene_removed.subscribe(_on_scene_removed)
+    entry.async_on_unload(subscription.dispose)
 
 
 class HASSXComfortScene(HA_SceneEntity):
@@ -61,6 +75,11 @@ class HASSXComfortScene(HA_SceneEntity):
             entry_type=DeviceEntryType.SERVICE,
             via_device=(DOMAIN, hub.hub_id),
         )
+
+    @property
+    def scene_id(self) -> int:
+        """Return the xComfort scene ID this entity represents."""
+        return self._scene.scene_id
 
     async def async_activate(self, **kwargs) -> None:
         """Activate the scene."""
