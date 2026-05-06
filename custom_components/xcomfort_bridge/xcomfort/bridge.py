@@ -107,9 +107,12 @@ class Bridge:
         self.remote_allowed = rx.subject.BehaviorSubject(None)
         self.remote_online = rx.subject.BehaviorSubject(None)
 
-        # Event streams for entity lifecycle — platforms subscribe here to drop
-        # HA entities when the bridge confirms a deletion. Use plain Subject
-        # (not BehaviorSubject) since these are edge events, not state.
+        # Event streams for entity lifecycle — platforms subscribe here to add
+        # or drop HA entities as the bridge reports changes. Plain Subject
+        # (not BehaviorSubject) because these are edge events, not state:
+        # late subscribers shouldn't replay "add" events and accidentally
+        # create duplicate entities.
+        self.scene_added = rx.subject.Subject()
         self.scene_removed = rx.subject.Subject()
 
         self.logger = _LOGGER.warning
@@ -135,6 +138,16 @@ class Bridge:
     def scenes(self):
         """Get scenes dictionary."""
         return self._scenes
+
+    @property
+    def scenes_count(self) -> int:
+        """Return the number of scenes known to the bridge.
+
+        Distinct from `home_scenes_count`, which reflects the 4-slot
+        dashboard quick-access scene array (often contains zeros for
+        empty slots).
+        """
+        return len(self._scenes)
 
     async def run(self):
         """Run the bridge main loop."""
@@ -235,6 +248,10 @@ class Bridge:
         """Add a scene to the bridge."""
         self._scenes[scene.scene_id] = scene
         _LOGGER.debug("Added scene: %s (id: %s)", scene.name, scene.scene_id)
+        # Notify HA platform. Fired from both the initial SET_ALL_DATA pass
+        # and runtime SET_SCENE / SET_SCENE_ID messages; the platform dedupes
+        # by scene_id so replays are harmless.
+        self.scene_added.on_next(scene)
 
     def _handle_SET_DEVICE_STATE(self, payload):
         """Handle device state updates."""

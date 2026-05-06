@@ -308,8 +308,15 @@ async def async_setup_entry(
         XComfortHubSensor(hub, entry, "bridge_name", "Bridge Name", "mdi:bridge"),
         XComfortHubSensor(hub, entry, "bridge_model", "Bridge Model", "mdi:devices"),
         XComfortHubSensor(hub, entry, "ip_address", "IP Address", "mdi:ip-network", ip),
+        # Keep the old "home_scenes_count" attribute key to preserve the
+        # existing entity's unique_id; the hub-side property now returns
+        # the total scene count rather than the dashboard-slot count.
         XComfortHubSensor(
-            hub, entry, "home_scenes_count", "Scenes Count", "mdi:script-text-outline"
+            hub,
+            entry,
+            "home_scenes_count",
+            "Scenes Count",
+            "mdi:script-text-outline",
         ),
     ]
 
@@ -370,7 +377,7 @@ class XComfortHubSensor(SensorEntity):
         Args:
             hub: XComfortHub instance
             entry: ConfigEntry instance
-            attribute: Hub attribute to display (hub_id, firmware_version, bridge_name, bridge_model, ip_address, or home_scenes_count)
+            attribute: Hub attribute to display (hub_id, firmware_version, bridge_name, bridge_model, ip_address, or scenes_count)
             name: Display name for the sensor
             icon: MDI icon for the sensor
             value: Optional fixed value (for IP address)

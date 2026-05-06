@@ -100,8 +100,23 @@ class XComfortHub:
 
     @property
     def home_scenes_count(self) -> int:
-        """Return the number of home scenes."""
-        return getattr(self.bridge, "home_scenes_count", 0)
+        """Return the total number of scenes defined on the bridge.
+
+        Named `home_scenes_count` for backwards compatibility with the
+        existing sensor's unique_id. Prior versions read this from
+        `homeScenes` in SET_BRIDGE_DATA, which is a 4-slot quick-access
+        dashboard array — misleading as a general count. Now reads the
+        actual scenes dict.
+        """
+        return getattr(self.bridge, "scenes_count", 0)
+
+    @property
+    def dashboard_scene_slots_used(self) -> int:
+        """Return number of non-empty quick-access dashboard scene slots.
+
+        The bridge exposes a 4-slot `homeScenes` array; zeros mean empty.
+        """
+        return sum(1 for sid in getattr(self.bridge, "home_scene_ids", []) if sid)
 
     async def test_connection(self) -> bool:
         """Test if connection to the bridge is working."""

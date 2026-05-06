@@ -41,6 +41,23 @@ async def async_setup_entry(
 
     entry.async_create_task(hass, _wait_for_hub_then_setup())
 
+    def _on_scene_added(scene) -> None:
+        """Add an HA entity when the bridge reports a newly created scene."""
+        # Skip scenes that are part of the initial snapshot — those are
+        # covered by the one-shot `_wait_for_hub_then_setup`. Also dedupe
+        # in case the bridge re-sends SET_SCENE for the same id after a
+        # reconnect.
+        if scene.scene_id in entities_by_scene_id:
+            return
+        _LOGGER.info(
+            "Adding HA scene entity for new scene %s (id=%s)",
+            scene.name,
+            scene.scene_id,
+        )
+        entity = HASSXComfortScene(hub, scene)
+        entities_by_scene_id[scene.scene_id] = entity
+        async_add_entities([entity])
+
     def _on_scene_removed(scene_id: int) -> None:
         """Drop the HA entity when the bridge reports a scene deletion."""
         entity = entities_by_scene_id.pop(scene_id, None)
@@ -49,8 +66,10 @@ async def async_setup_entry(
         _LOGGER.info("Removing HA scene entity for deleted scene (id=%s)", scene_id)
         hass.async_create_task(entity.async_remove(force_remove=True))
 
-    subscription = hub.bridge.scene_removed.subscribe(_on_scene_removed)
-    entry.async_on_unload(subscription.dispose)
+    added_sub = hub.bridge.scene_added.subscribe(_on_scene_added)
+    removed_sub = hub.bridge.scene_removed.subscribe(_on_scene_removed)
+    entry.async_on_unload(added_sub.dispose)
+    entry.async_on_unload(removed_sub.dispose)
 
 
 class HASSXComfortScene(HA_SceneEntity):
