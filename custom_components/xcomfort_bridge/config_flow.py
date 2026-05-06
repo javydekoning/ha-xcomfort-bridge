@@ -13,34 +13,75 @@ from homeassistant.helpers.device_registry import format_mac
 from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 
 from .const import (
+    AUTH_MODE_DEVICE,
+    AUTH_MODE_USER,
     CONF_ADD_APPLIANCE_POWER_SENSORS,
     CONF_ADD_HEATER_POWER_SENSORS,
     CONF_ADD_LIGHT_POWER_SENSORS,
     CONF_ADD_ROOM_POWER_SENSORS,
     CONF_AUTH_KEY,
+    CONF_AUTH_MODE,
     CONF_IDENTIFIER,
     CONF_MAC,
     CONF_POWER_ENERGY_SECTION,
+    CONF_USERNAME,
+    DEFAULT_DEVICE_USERNAME,
     DOMAIN,
 )
 from .xcomfort.connection import InvalidAuth, setup_secure_connection
 
 _LOGGER = logging.getLogger(__name__)
 
-
-# If auto-discovered, we'll minimally need the AUTH_KEY
-IDENTIFIER_AND_AUTH = vol.Schema(
-    {
-        vol.Required(CONF_AUTH_KEY): str,
-        vol.Optional(CONF_IDENTIFIER, default="XComfort Bridge"): str,
-    }
-)
-
-# If added manually, we'll also need the IP address:
-FULL_CONFIG = IDENTIFIER_AND_AUTH.extend({vol.Required(CONF_IP_ADDRESS): str})
+# Labels shown in the auth-mode dropdown. Keys are the CONF_AUTH_MODE values
+# written into the config entry.
+_AUTH_MODE_LABELS = {
+    AUTH_MODE_DEVICE: "Device auth code (default)",
+    AUTH_MODE_USER: "Named user account",
+}
 
 
-async def _validate_credentials(hass, ip: str, auth_key: str) -> str | None:
+def _mode_schema(
+    *,
+    include_ip: bool,
+    defaults: dict[str, Any] | None = None,
+) -> vol.Schema:
+    """Build the initial schema: IP (optional), identifier, auth mode."""
+    defaults = defaults or {}
+    fields: dict[Any, Any] = {}
+    if include_ip:
+        fields[
+            vol.Required(CONF_IP_ADDRESS, default=defaults.get(CONF_IP_ADDRESS, ""))
+        ] = str
+    fields[
+        vol.Optional(
+            CONF_IDENTIFIER, default=defaults.get(CONF_IDENTIFIER, "XComfort Bridge")
+        )
+    ] = str
+    fields[
+        vol.Required(
+            CONF_AUTH_MODE, default=defaults.get(CONF_AUTH_MODE, AUTH_MODE_DEVICE)
+        )
+    ] = vol.In(_AUTH_MODE_LABELS)
+    return vol.Schema(fields)
+
+
+def _credentials_schema(
+    auth_mode: str, defaults: dict[str, Any] | None = None
+) -> vol.Schema:
+    """Build the credentials schema — username only shown in user mode."""
+    defaults = defaults or {}
+    fields: dict[Any, Any] = {}
+    if auth_mode == AUTH_MODE_USER:
+        fields[vol.Required(CONF_USERNAME, default=defaults.get(CONF_USERNAME, ""))] = (
+            str
+        )
+    fields[vol.Required(CONF_AUTH_KEY, default=defaults.get(CONF_AUTH_KEY, ""))] = str
+    return vol.Schema(fields)
+
+
+async def _validate_credentials(
+    hass, ip: str, auth_key: str, username: str
+) -> str | None:
     """Probe the bridge with the given credentials.
 
     Returns an error code ("invalid_auth" / "cannot_connect") suitable for
@@ -48,9 +89,9 @@ async def _validate_credentials(hass, ip: str, auth_key: str) -> str | None:
     """
     session = async_get_clientsession(hass)
     try:
-        connection = await setup_secure_connection(session, ip, auth_key)
+        connection = await setup_secure_connection(session, ip, auth_key, username)
     except InvalidAuth:
-        _LOGGER.warning("Bridge at %s rejected the supplied auth key", ip)
+        _LOGGER.warning("Bridge at %s rejected credentials for user '%s'", ip, username)
         return "invalid_auth"
     except (ConnectionError, OSError) as err:
         _LOGGER.warning("Could not reach bridge at %s: %r", ip, err)
@@ -125,59 +166,81 @@ class XComfortBridgeConfigFlow(config_entries.ConfigFlow):
     async def async_step_auth(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.ConfigFlowResult:
-        """Handle the authentication step of config flow."""
-        errors: dict[str, str] = {}
+        """Collect identifier + auth mode for a DHCP-discovered bridge."""
         if user_input is not None:
-            error = await _validate_credentials(
-                self.hass,
-                self.data[CONF_IP_ADDRESS],
-                user_input[CONF_AUTH_KEY],
-            )
-            if error is None:
-                self.data[CONF_AUTH_KEY] = user_input[CONF_AUTH_KEY]
-                self.data[CONF_IDENTIFIER] = user_input.get(CONF_IDENTIFIER)
-
-                return self.async_create_entry(
-                    title=self.title,
-                    data=self.data,
-                )
-            errors["base"] = error
+            self.data[CONF_IDENTIFIER] = user_input.get(CONF_IDENTIFIER)
+            self.data[CONF_AUTH_MODE] = user_input[CONF_AUTH_MODE]
+            return await self.async_step_credentials()
 
         return self.async_show_form(
-            step_id="auth", data_schema=IDENTIFIER_AND_AUTH, errors=errors
+            step_id="auth", data_schema=_mode_schema(include_ip=False)
         )
 
     async def async_step_user(self, user_input=None):
-        """Handle a onboarding flow initiated by the user."""
-        errors: dict[str, str] = {}
+        """Collect host + identifier + auth mode for a manually-added bridge."""
         if user_input is not None:
-            error = await _validate_credentials(
-                self.hass,
-                user_input[CONF_IP_ADDRESS],
-                user_input[CONF_AUTH_KEY],
-            )
-            if error is None:
-                self.data[CONF_IP_ADDRESS] = user_input[CONF_IP_ADDRESS]
-                self.data[CONF_AUTH_KEY] = user_input[CONF_AUTH_KEY]
-                self.data[CONF_IDENTIFIER] = user_input.get(CONF_IDENTIFIER)
-
-                await self.async_set_unique_id(
-                    f"{user_input[CONF_IDENTIFIER]}/{user_input[CONF_IP_ADDRESS]}"
-                )
-
-                return self.async_create_entry(
-                    title=self.title,
-                    data=self.data,
-                )
-            errors["base"] = error
+            self.data[CONF_IP_ADDRESS] = user_input[CONF_IP_ADDRESS]
+            self.data[CONF_IDENTIFIER] = user_input.get(CONF_IDENTIFIER)
+            self.data[CONF_AUTH_MODE] = user_input[CONF_AUTH_MODE]
+            return await self.async_step_credentials()
 
         return self.async_show_form(
-            step_id="user", data_schema=FULL_CONFIG, errors=errors
+            step_id="user", data_schema=_mode_schema(include_ip=True)
+        )
+
+    async def async_step_credentials(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.ConfigFlowResult:
+        """Collect and validate the secret (and username in user mode)."""
+        auth_mode = self.data.get(CONF_AUTH_MODE, AUTH_MODE_DEVICE)
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            username = (
+                user_input[CONF_USERNAME].strip()
+                if auth_mode == AUTH_MODE_USER
+                else DEFAULT_DEVICE_USERNAME
+            )
+            auth_key = user_input[CONF_AUTH_KEY].strip()
+
+            if auth_mode == AUTH_MODE_USER and not username:
+                errors["base"] = "username_required"
+            elif not auth_key:
+                errors["base"] = "secret_required"
+            else:
+                error = await _validate_credentials(
+                    self.hass, self.data[CONF_IP_ADDRESS], auth_key, username
+                )
+                if error is None:
+                    self.data[CONF_AUTH_KEY] = auth_key
+                    self.data[CONF_USERNAME] = username
+
+                    # Only set the composite unique_id if DHCP didn't already
+                    # provide a MAC-based one.
+                    if self.unique_id is None:
+                        await self.async_set_unique_id(
+                            f"{self.data.get(CONF_IDENTIFIER)}/"
+                            f"{self.data[CONF_IP_ADDRESS]}"
+                        )
+                    return self.async_create_entry(title=self.title, data=self.data)
+                errors["base"] = error
+
+        return self.async_show_form(
+            step_id="credentials",
+            data_schema=_credentials_schema(auth_mode, user_input),
+            errors=errors,
+            description_placeholders={"auth_mode": _AUTH_MODE_LABELS[auth_mode]},
         )
 
     async def async_step_import(self, import_data: dict):
-        """Handle import from configuration.yaml."""
-        return await self.async_step_user(import_data)
+        """Handle import from configuration.yaml — legacy device-mode only."""
+        # Imports predate auth-mode support; preserve the device-code flow.
+        self.data[CONF_IP_ADDRESS] = import_data[CONF_IP_ADDRESS]
+        self.data[CONF_IDENTIFIER] = import_data.get(CONF_IDENTIFIER)
+        self.data[CONF_AUTH_MODE] = AUTH_MODE_DEVICE
+        self.data[CONF_AUTH_KEY] = import_data[CONF_AUTH_KEY]
+        self.data[CONF_USERNAME] = DEFAULT_DEVICE_USERNAME
+        return self.async_create_entry(title=self.title, data=self.data)
 
     @property
     def title(self) -> str:

@@ -43,10 +43,21 @@ class State(Enum):
 class Bridge:
     """Main bridge class for xComfort communication."""
 
-    def __init__(self, ip_address: str, authkey: str, session=None):
-        """Initialize bridge with IP address and auth key."""
+    def __init__(
+        self,
+        ip_address: str,
+        authkey: str,
+        session=None,
+        username: str = "default",
+    ):
+        """Initialize bridge with IP address, auth key and optional username.
+
+        `username` defaults to "default" (device auth code flow); pass a
+        named user account to log in as a user-mode account.
+        """
         self.ip_address = ip_address
         self.authkey = authkey
+        self.username = username
 
         if session is None:
             session = aiohttp.ClientSession()
@@ -70,6 +81,11 @@ class Bridge:
         self._scenes = {}
         self.state = State.Uninitialized
         self.on_initialized = asyncio.Event()
+        # Fires once SET_BRIDGE_DATA (303) has populated bridge_name / model.
+        # SET_BRIDGE_DATA can arrive after SET_ALL_DATA's lastItem terminator,
+        # so callers that need the metadata must wait on this event, not just
+        # on on_initialized.
+        self.on_metadata_received = asyncio.Event()
         self.connection = None
         self.connection_subscription = None
 
@@ -672,6 +688,12 @@ class Bridge:
         self.bridge_name = payload.get("name")
         self.bridge_type = payload.get("bridgeType")
 
+        # Signal to setup that bridge metadata is available. The bridge may
+        # push SET_BRIDGE_DATA repeatedly; only the first payload carrying
+        # identifying fields matters for the one-shot "ready" event.
+        if self.bridge_id is not None or self.bridge_name is not None:
+            self.on_metadata_received.set()
+
         # Extract home scenes count
         home_scenes = payload.get("homeScenes", [])
         self.home_scene_ids = list(home_scenes)
@@ -799,7 +821,7 @@ class Bridge:
         """Establish connection to bridge."""
         _LOGGER.debug("Setting up secure connection to bridge")
         self.connection = await setup_secure_connection(
-            self._session, self.ip_address, self.authkey
+            self._session, self.ip_address, self.authkey, self.username
         )
         self.connection_subscription = self.connection.messages.subscribe(
             self._onMessage
@@ -815,6 +837,7 @@ class Bridge:
         _LOGGER.info("Closing bridge connection")
         self.state = State.Closing
         self.on_initialized.clear()
+        self.on_metadata_received.clear()
 
         if isinstance(self.connection, SecureBridgeConnection):
             self.connection_subscription.dispose()

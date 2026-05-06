@@ -4,17 +4,27 @@
     "step": {
       "user": {
         "title": "Eaton xComfort Bridge",
+        "description": "Choose how to authenticate with the bridge. 'Device auth code' uses the single code shown in the xComfort Bridge app. 'Named user account' uses a username and password configured in the app.",
         "data": {
           "ip_address": "IP address",
-          "auth_key": "Auth key",
-          "identifier": "Identifier"
+          "identifier": "Identifier",
+          "auth_mode": "Authentication mode"
         }
       },
       "auth": {
         "title": "Eaton xComfort Bridge",
+        "description": "Choose how to authenticate with the discovered bridge.",
         "data": {
-          "auth_key": "Auth key",
-          "identifier": "Identifier"
+          "identifier": "Identifier",
+          "auth_mode": "Authentication mode"
+        }
+      },
+      "credentials": {
+        "title": "Eaton xComfort Bridge",
+        "description": "Enter the credentials for {auth_mode}.",
+        "data": {
+          "username": "Username",
+          "auth_key": "Secret / Auth key"
         }
       }
     },
@@ -22,8 +32,10 @@
       "no_devices_found": "No Eaton xComfort Bridge devices found on the network."
     },
     "error": {
-      "invalid_auth": "Invalid auth key. Check the key shown in the xComfort Bridge app and try again.",
-      "cannot_connect": "Could not reach the xComfort Bridge at the given IP address."
+      "invalid_auth": "Invalid credentials. Check the values shown in the xComfort Bridge app and try again.",
+      "cannot_connect": "Could not reach the xComfort Bridge at the given IP address.",
+      "username_required": "Username is required when using a named user account.",
+      "secret_required": "The secret / auth key is required."
     }
   },
   "device_automation": {

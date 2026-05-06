@@ -88,9 +88,18 @@ def _raise_renew_token_error(msg):
     raise ConnectionError(msg)
 
 
-async def setup_secure_connection(session, ip_address, authkey):
-    """Set up secure connection to xComfort bridge."""
-    _LOGGER.info("Setting up secure connection to %s", ip_address)
+async def setup_secure_connection(session, ip_address, authkey, username="default"):
+    """Set up secure connection to xComfort bridge.
+
+    `username` selects which bridge account is used for AUTH_LOGIN (msg 30).
+    Use the default ("default") for the bridge's single device-wide auth code;
+    pass an app-configured user name to log in as a named user account.
+    In both cases `authkey` is the secret entered in the corresponding app
+    screen (device auth code, or user password).
+    """
+    _LOGGER.info(
+        "Setting up secure connection to %s as user '%s'", ip_address, username
+    )
 
     async def __receive(ws):
         """Receive message from websocket."""
@@ -190,7 +199,7 @@ async def setup_secure_connection(session, ip_address, authkey):
         _LOGGER.debug("Generated authentication credentials")
 
         await connection.send_message(
-            30, {"username": "default", "password": password, "salt": salt}
+            30, {"username": username, "password": password, "salt": salt}
         )
 
         msg = await connection.receive()

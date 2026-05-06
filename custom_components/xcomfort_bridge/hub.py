@@ -27,9 +27,10 @@ class XComfortHub:
         ip: str,
         auth_key: str,
         entry: ConfigEntry,
+        username: str = "default",
     ):
         """Initialize underlying bridge."""
-        bridge = Bridge(ip, auth_key)
+        bridge = Bridge(ip, auth_key, username=username)
         self.hass = hass
         self.bridge = bridge
         self.identifier = identifier
