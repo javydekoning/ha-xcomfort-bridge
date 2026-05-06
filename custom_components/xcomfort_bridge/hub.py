@@ -4,14 +4,29 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import TypeVar
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN
 from .xcomfort.bridge import Bridge
+from .xcomfort.devices import (
+    Appliance,
+    DoorSensor,
+    DoorWindowSensor,
+    Heater,
+    HeatingValve,
+    Light,
+    RcTouch,
+    Rocker,
+    Shade,
+    WindowSensor,
+)
 
 _LOGGER = logging.getLogger(__name__)
+
+_T = TypeVar("_T")
 
 
 """Wrapper class over bridge library to emulate hub."""
@@ -117,6 +132,112 @@ class XComfortHub:
         The bridge exposes a 4-slot `homeScenes` array; zeros mean empty.
         """
         return sum(1 for sid in getattr(self.bridge, "home_scene_ids", []) if sid)
+
+    # --- Typed device-query helpers --------------------------------------
+    #
+    # Platforms used to filter `hub.devices` with `isinstance(...)` inline.
+    # That pattern left the device-type vocabulary duplicated across every
+    # platform file and made `hub.devices` an untyped `dict_values`. The
+    # helpers below centralise the filtering and give platforms a typed
+    # return value, so e.g. `light.py` can iterate `hub.get_lights()`
+    # directly without importing the model class.
+
+    def _devices_of_type(self, device_cls: type[_T]) -> list[_T]:
+        """Return all devices that are an instance of device_cls."""
+        return [d for d in self.devices if isinstance(d, device_cls)]
+
+    def get_lights(self) -> list[Light]:
+        """Return all light devices."""
+        return self._devices_of_type(Light)
+
+    def get_appliances(self) -> list[Appliance]:
+        """Return all appliance (switchable load) devices."""
+        return self._devices_of_type(Appliance)
+
+    def get_shades(self) -> list[Shade]:
+        """Return all shade (cover) devices."""
+        return self._devices_of_type(Shade)
+
+    def get_heaters(self) -> list[Heater]:
+        """Return all heater devices (electric heating actuators)."""
+        return self._devices_of_type(Heater)
+
+    def get_heating_valves(self) -> list[HeatingValve]:
+        """Return all heating-valve devices."""
+        return self._devices_of_type(HeatingValve)
+
+    def get_rctouches(self) -> list[RcTouch]:
+        """Return all RC-Touch room controllers."""
+        return self._devices_of_type(RcTouch)
+
+    def get_rockers(self) -> list[Rocker]:
+        """Return all rocker (pushbutton/remote channel) devices."""
+        return self._devices_of_type(Rocker)
+
+    def get_multisensor_rockers(self) -> list[Rocker]:
+        """Return only rockers that also carry temp/humidity sensors."""
+        return [r for r in self.get_rockers() if r.has_sensors]
+
+    def get_window_sensors(self) -> list[WindowSensor]:
+        """Return all window sensors."""
+        return self._devices_of_type(WindowSensor)
+
+    def get_door_sensors(self) -> list[DoorSensor]:
+        """Return all door sensors."""
+        return self._devices_of_type(DoorSensor)
+
+    def get_door_window_sensors(self) -> list[DoorWindowSensor]:
+        """Return all door/window sensors (both door and window variants)."""
+        return self._devices_of_type(DoorWindowSensor)
+
+    def get_primary_devices_per_component(self) -> list:
+        """Return one representative device per physical component.
+
+        A component (e.g. a 4-channel pushbutton) exposes multiple device
+        channels, but attributes like signal quality and battery level live
+        at the component level and should produce a single HA entity — not
+        one per channel. The "primary" device per component is deterministic
+        (lowest device_id with a comp_id) so the resulting entities are
+        stable across restarts.
+        """
+        seen_comps: set = set()
+        primaries: list = []
+        for device in sorted(self.devices, key=lambda d: getattr(d, "device_id", 0)):
+            comp_id = getattr(device, "comp_id", None)
+            if comp_id is None or comp_id in seen_comps:
+                continue
+            seen_comps.add(comp_id)
+            primaries.append(device)
+        return primaries
+
+    def get_components_with_signal(self) -> list:
+        """Return primary devices whose component reports signal quality."""
+        return [
+            d
+            for d in self.get_primary_devices_per_component()
+            if (comp := self.bridge.comps.get(d.comp_id)) is not None
+            and comp.signal_quality_label is not None
+        ]
+
+    def get_components_with_battery(self) -> list:
+        """Return primary devices whose component reports a battery level.
+
+        Mains-powered components are excluded, matching the app's UI
+        (battery tile only appears on battery-powered hardware).
+        """
+        result = []
+        for d in self.get_primary_devices_per_component():
+            comp = self.bridge.comps.get(d.comp_id)
+            if comp is None:
+                continue
+            if comp.is_mains_powered:
+                continue
+            if comp.battery_percent is None:
+                continue
+            result.append(d)
+        return result
+
+    # ---------------------------------------------------------------------
 
     async def test_connection(self) -> bool:
         """Test if connection to the bridge is working."""

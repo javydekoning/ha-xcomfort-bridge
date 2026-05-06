@@ -6,10 +6,15 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant import config_entries
-from homeassistant.const import CONF_IP_ADDRESS
+from homeassistant.const import CONF_IP_ADDRESS, CONF_PASSWORD
 from homeassistant.data_entry_flow import section
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.device_registry import format_mac
+from homeassistant.helpers.selector import (
+    TextSelector,
+    TextSelectorConfig,
+    TextSelectorType,
+)
 from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 
 from .const import (
@@ -68,14 +73,29 @@ def _mode_schema(
 def _credentials_schema(
     auth_mode: str, defaults: dict[str, Any] | None = None
 ) -> vol.Schema:
-    """Build the credentials schema — username only shown in user mode."""
+    """Build the credentials schema — username only shown in user mode.
+
+    Both the device auth code and the user password are secrets, so the
+    secret field is always rendered masked. To get the right stock label,
+    the field key differs per mode: `password` in user mode (so HA shows
+    "Password"), `auth_key` in device mode (label from our strings.json).
+    Both are stored on the entry as CONF_AUTH_KEY after validation — see
+    `async_step_credentials`.
+    """
     defaults = defaults or {}
     fields: dict[Any, Any] = {}
+    password_selector = TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD))
     if auth_mode == AUTH_MODE_USER:
         fields[vol.Required(CONF_USERNAME, default=defaults.get(CONF_USERNAME, ""))] = (
             str
         )
-    fields[vol.Required(CONF_AUTH_KEY, default=defaults.get(CONF_AUTH_KEY, ""))] = str
+        fields[vol.Required(CONF_PASSWORD, default=defaults.get(CONF_PASSWORD, ""))] = (
+            password_selector
+        )
+    else:
+        fields[vol.Required(CONF_AUTH_KEY, default=defaults.get(CONF_AUTH_KEY, ""))] = (
+            password_selector
+        )
     return vol.Schema(fields)
 
 
@@ -196,12 +216,16 @@ class XComfortBridgeConfigFlow(config_entries.ConfigFlow):
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            username = (
-                user_input[CONF_USERNAME].strip()
-                if auth_mode == AUTH_MODE_USER
-                else DEFAULT_DEVICE_USERNAME
-            )
-            auth_key = user_input[CONF_AUTH_KEY].strip()
+            # User mode renders the secret as the stock `password` field so
+            # HA applies the "Password" label and password autofill hints.
+            # Device mode keeps `auth_key` to match the app's own wording.
+            # Normalise both into the single CONF_AUTH_KEY for storage.
+            if auth_mode == AUTH_MODE_USER:
+                username = user_input[CONF_USERNAME].strip()
+                auth_key = user_input[CONF_PASSWORD].strip()
+            else:
+                username = DEFAULT_DEVICE_USERNAME
+                auth_key = user_input[CONF_AUTH_KEY].strip()
 
             if auth_mode == AUTH_MODE_USER and not username:
                 errors["base"] = "username_required"

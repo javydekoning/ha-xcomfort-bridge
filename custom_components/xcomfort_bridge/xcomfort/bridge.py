@@ -779,6 +779,19 @@ class Bridge:
         code, message = format_app_info(payload)
         _LOGGER.warning("Bridge app info [%s]: %s", code, message)
 
+    def _handle_SET_COMP_INFO(self, payload):
+        """Handle component info updates (signal, battery, mains status).
+
+        Delegates to the comp payload handler, which updates the component's
+        stored payload and emits on its state observable. Entities that
+        subscribe to comp.state (e.g. the signal / battery sensors) pick up
+        the new info on the next emission.
+        """
+        if "compId" not in payload:
+            _LOGGER.warning("SET_COMP_INFO payload missing compId: %s", payload)
+            return
+        self._handle_comp_payload(payload)
+
     def _handle_SET_BRIDGE_STATE(self, payload):
         """Handle bridge state updates for sensors."""
         _LOGGER.debug(

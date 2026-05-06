@@ -31,17 +31,10 @@ async def async_setup_entry(
     async def _wait_for_hub_then_setup():
         await hub.has_done_initial_load.wait()
 
-        devices = hub.devices
+        light_devices = hub.get_lights()
+        _LOGGER.debug("Found %s xcomfort lights", len(light_devices))
 
-        _LOGGER.debug("Found %s xcomfort devices", len(devices))
-
-        lights = []
-        for device in devices:
-            if isinstance(device, Light):
-                _LOGGER.debug("Adding %s", device)
-                light = HASSXComfortLight(hass, hub, device)
-                lights.append(light)
-
+        lights = [HASSXComfortLight(hass, hub, device) for device in light_devices]
         _LOGGER.debug("Added %s lights", len(lights))
         async_add_entities(lights)
 

@@ -46,7 +46,15 @@ from .entity_lifecycle import (
 from .hub import XComfortHub
 from .xcomfort.bridge import Room
 from .xcomfort.constants import ComponentTypes
-from .xcomfort.devices import Appliance, Heater, HeatingValve, Light, RcTouch, Rocker
+from .xcomfort.devices import (
+    Appliance,
+    Heater,
+    HeatingValve,
+    Light,
+    RcTouch,
+    Rocker,
+    Shade,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -79,8 +87,7 @@ def _get_power_sensor_options(entry: ConfigEntry) -> tuple[bool, bool, bool, boo
 def _remove_power_energy_entities(
     hass: HomeAssistant,
     entry: ConfigEntry,
-    devices: list,
-    rooms: list,
+    hub: XComfortHub,
     add_room_power_sensors: bool,
     add_heater_power_sensors: bool,
     add_light_power_sensors: bool,
@@ -110,36 +117,34 @@ def _remove_power_energy_entities(
         if removed:
             _LOGGER.debug("Removed %s %s entities", removed, label)
 
+    def _power_energy_ids(iterable) -> set[str]:
+        ids: set[str] = set()
+        for dev in iterable:
+            ids.add(f"power_{dev.name}_{dev.device_id}")
+            ids.add(f"energy_{dev.name}_{dev.device_id}")
+        return ids
+
     if not add_room_power_sensors:
         room_unique_ids: set[str] = set()
-        for room in rooms:
+        for room in hub.rooms:
             room_unique_ids.add(f"energy_{room.room_id}")
             room_unique_ids.add(f"energy_kwh_{room.room_id}")
         _remove_entities_for_unique_ids(room_unique_ids, "room power/energy")
 
     if not add_heater_power_sensors:
-        heater_unique_ids: set[str] = set()
-        for device in devices:
-            if isinstance(device, Heater):
-                heater_unique_ids.add(f"power_{device.name}_{device.device_id}")
-                heater_unique_ids.add(f"energy_{device.name}_{device.device_id}")
-        _remove_entities_for_unique_ids(heater_unique_ids, "heater power/energy")
+        _remove_entities_for_unique_ids(
+            _power_energy_ids(hub.get_heaters()), "heater power/energy"
+        )
 
     if not add_light_power_sensors:
-        light_unique_ids: set[str] = set()
-        for device in devices:
-            if isinstance(device, Light):
-                light_unique_ids.add(f"power_{device.name}_{device.device_id}")
-                light_unique_ids.add(f"energy_{device.name}_{device.device_id}")
-        _remove_entities_for_unique_ids(light_unique_ids, "light power/energy")
+        _remove_entities_for_unique_ids(
+            _power_energy_ids(hub.get_lights()), "light power/energy"
+        )
 
     if not add_appliance_power_sensors:
-        appliance_unique_ids: set[str] = set()
-        for device in devices:
-            if isinstance(device, Appliance):
-                appliance_unique_ids.add(f"power_{device.name}_{device.device_id}")
-                appliance_unique_ids.add(f"energy_{device.name}_{device.device_id}")
-        _remove_entities_for_unique_ids(appliance_unique_ids, "appliance power/energy")
+        _remove_entities_for_unique_ids(
+            _power_energy_ids(hub.get_appliances()), "appliance power/energy"
+        )
 
 
 def _build_device_sensors(
@@ -328,12 +333,11 @@ async def async_setup_entry(
         devices = list(hub.devices)
         rooms = list(hub.rooms)
 
-        _LOGGER.debug("Found %s xcomfort devices", len(list(devices)))
+        _LOGGER.debug("Found %s xcomfort devices", len(devices))
         _remove_power_energy_entities(
             hass,
             entry,
-            devices,
-            rooms,
+            hub,
             add_room_power_sensors,
             add_heater_power_sensors,
             add_light_power_sensors,
@@ -348,8 +352,20 @@ async def async_setup_entry(
             add_appliance_power_sensors,
         )
 
-        _LOGGER.debug("Found %s xcomfort rooms", len(list(rooms)))
+        _LOGGER.debug("Found %s xcomfort rooms", len(rooms))
         sensors.extend(_build_room_sensors(hub, rooms, add_room_power_sensors))
+
+        # Diagnostic sensors: one Signal + one Battery (if applicable) per
+        # physical component. Attached to the primary device of each comp.
+        signal_devices = hub.get_components_with_signal()
+        battery_devices = hub.get_components_with_battery()
+        _LOGGER.debug(
+            "Found %s components with signal info, %s with battery info",
+            len(signal_devices),
+            len(battery_devices),
+        )
+        sensors.extend(XComfortSignalSensor(hub, d) for d in signal_devices)
+        sensors.extend(XComfortBatterySensor(hub, d) for d in battery_devices)
 
         _LOGGER.debug("Added %s sensor entities", len(sensors))
         async_add_entities(sensors)
@@ -1593,3 +1609,112 @@ class XComfortHeatingValvePositionSensor(SensorEntity):
     def native_value(self):
         """Return the current value."""
         return self._state and self._state.valve_position
+
+
+def _component_device_identifier(hub: XComfortHub, device) -> str:
+    """Return the HA-device identifier of the platform that owns `device`.
+
+    Diagnostic sensors (signal, battery) should land on the same HA device
+    card as the primary entity for that component — otherwise they show
+    up orphaned on the bridge card. Each platform uses its own identifier
+    scheme; this resolver reproduces those schemes so the diagnostic
+    sensors can attach to the matching device.
+
+    Falls back to the hub's identifier for device types that don't
+    currently register a device card of their own (binary sensors).
+    """
+    if isinstance(device, Light):
+        return f"light_{DOMAIN}_{hub.identifier}-{device.device_id}"
+    if isinstance(device, Appliance):
+        return f"switch_{DOMAIN}_{hub.identifier}-{device.device_id}"
+    if isinstance(device, Shade):
+        return f"shade_{DOMAIN}_{hub.identifier}-{device.device_id}"
+    if isinstance(device, Heater):
+        return f"heater_{DOMAIN}_{hub.identifier}-{device.device_id}"
+    if isinstance(device, HeatingValve):
+        return f"heating_valve_{DOMAIN}_{hub.identifier}-{device.device_id}"
+    if isinstance(device, RcTouch):
+        return f"climate_{DOMAIN}_{hub.identifier}-{device.device_id}"
+    if isinstance(device, Rocker):
+        # Pushbuttons / remotes group all rocker channels under one HA
+        # device keyed by comp_id (see event.py).
+        return f"event_{DOMAIN}_comp_{device.comp_id}"
+    # Door/window sensors and other unknown types — no platform-specific
+    # device card exists, so attach to the bridge instead.
+    return hub.hub_id
+
+
+class _XComfortComponentDiagnosticBase(SensorEntity):
+    """Shared plumbing for component-level diagnostic sensors.
+
+    Signal quality and battery level are reported by the bridge on the
+    component, not per channel. These entities therefore subscribe to the
+    component's state stream (not a single device's) and re-read from the
+    Comp helpers whenever a new comp payload arrives.
+    """
+
+    _attr_has_entity_name = True
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_should_poll = False
+
+    def __init__(self, hub: XComfortHub, device) -> None:
+        """Initialise with the primary device representing a component."""
+        self.hub = hub
+        self._device = device
+        self._comp = hub.bridge.comps.get(device.comp_id)
+        init_entity_lifecycle(self)
+        # Attach to the same HA device that the owning platform created so
+        # the diagnostic shows up on the component's card, not on the bridge.
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, _component_device_identifier(hub, device))},
+        )
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to comp state so info[] refreshes reach the UI."""
+        await super().async_added_to_hass()
+        mark_entity_added(self)
+        if self._comp is not None:
+            subscribe_observable(
+                self, self._comp.state, self._on_comp_state, "comp.state"
+            )
+
+    def _on_comp_state(self, _state) -> None:
+        async_write_state_safely(self, "comp.state")
+
+
+class XComfortSignalSensor(_XComfortComponentDiagnosticBase):
+    """Signal quality label for an xComfort component ("Good", "Fair", ...)."""
+
+    _attr_icon = "mdi:signal"
+    # With has_entity_name=True HA prepends the owning device's name, so
+    # "Signal" becomes e.g. "Living Room Dimmer Signal" in the UI.
+    _attr_name = "Signal"
+
+    def __init__(self, hub: XComfortHub, device) -> None:
+        """Initialise sensor tied to the component's primary device."""
+        super().__init__(hub, device)
+        self._attr_unique_id = f"signal_{DOMAIN}_{hub.identifier}-{device.comp_id}"
+
+    @property
+    def native_value(self) -> str | None:
+        """Return signal quality label, or None if the comp hasn't reported."""
+        return self._comp.signal_quality_label if self._comp is not None else None
+
+
+class XComfortBatterySensor(_XComfortComponentDiagnosticBase):
+    """Battery level (as percentage bucket) for a battery-powered component."""
+
+    _attr_device_class = SensorDeviceClass.BATTERY
+    _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_name = "Battery"
+
+    def __init__(self, hub: XComfortHub, device) -> None:
+        """Initialise sensor tied to the component's primary device."""
+        super().__init__(hub, device)
+        self._attr_unique_id = f"battery_{DOMAIN}_{hub.identifier}-{device.comp_id}"
+
+    @property
+    def native_value(self) -> int | None:
+        """Return battery percentage (0/25/50/75/100), or None if unknown."""
+        return self._comp.battery_percent if self._comp is not None else None

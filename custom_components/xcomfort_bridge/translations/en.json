@@ -24,7 +24,8 @@
         "description": "Enter the credentials for {auth_mode}.",
         "data": {
           "username": "Username",
-          "auth_key": "Secret / Auth key"
+          "password": "Password",
+          "auth_key": "Auth key"
         }
       }
     },

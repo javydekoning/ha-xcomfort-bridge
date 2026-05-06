@@ -34,17 +34,10 @@ async def async_setup_entry(
     async def _wait_for_hub_then_setup():
         await hub.has_done_initial_load.wait()
 
-        devices = hub.devices
+        shade_devices = hub.get_shades()
+        _LOGGER.debug("Found %s xcomfort shades", len(shade_devices))
 
-        _LOGGER.debug("Found %s xcomfort devices", len(devices))
-
-        shades = []
-        for device in devices:
-            if isinstance(device, Shade):
-                _LOGGER.debug("Adding %s", device)
-                shade = HASSXComfortShade(hass, hub, device)
-                shades.append(shade)
-
+        shades = [HASSXComfortShade(hass, hub, device) for device in shade_devices]
         _LOGGER.debug("Added %s shades", len(shades))
         async_add_entities(shades)
 

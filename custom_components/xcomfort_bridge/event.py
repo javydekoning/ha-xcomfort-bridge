@@ -97,13 +97,9 @@ async def async_setup_entry(
                 comp.comp_type,
             )
 
-            # Find all devices (rockers) that belong to this component
+            # Find all rocker devices that belong to this component.
             component_devices = [
-                device
-                for device in hub.devices
-                if isinstance(device, Rocker)
-                and hasattr(device, "comp_id")
-                and device.comp_id == comp.comp_id
+                rocker for rocker in hub.get_rockers() if rocker.comp_id == comp.comp_id
             ]
 
             if not component_devices:
@@ -153,17 +149,16 @@ async def async_setup_entry(
                     events.append(event)
 
         # Handle RcTouch devices separately
-        for device in hub.devices:
-            if isinstance(device, RcTouch):
-                comp = device.bridge.comps.get(device.comp_id)
-                _LOGGER.debug(
-                    "Adding RcTouch button events for %s (comp: %s, comp_type: %s)",
-                    device.name,
-                    comp.name if comp else "Unknown",
-                    comp.comp_type if comp else None,
-                )
-                event = XComfortRcTouchEvent(hass, hub, device, comp)
-                events.append(event)
+        for device in hub.get_rctouches():
+            comp = device.bridge.comps.get(device.comp_id)
+            _LOGGER.debug(
+                "Adding RcTouch button events for %s (comp: %s, comp_type: %s)",
+                device.name,
+                comp.name if comp else "Unknown",
+                comp.comp_type if comp else None,
+            )
+            event = XComfortRcTouchEvent(hass, hub, device, comp)
+            events.append(event)
 
         async_add_entities(events)
 
