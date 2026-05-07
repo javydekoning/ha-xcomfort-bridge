@@ -1,6 +1,7 @@
 """Bridge module for xComfort integration."""
 
 import asyncio
+import contextlib
 from enum import Enum
 import logging
 
@@ -207,6 +208,24 @@ class Bridge:
         self._comps[comp.comp_id] = comp
         _LOGGER.debug("Added component: %s (type: %s)", comp.name, comp.comp_type)
 
+    @staticmethod
+    def _update_device_temperature(device, payload):
+        """Cache info-code 1109 (°C) onto the device if the payload carries it.
+
+        Called centrally before dispatching a payload into a device's
+        handle_state, so the cached value survives subsequent partial
+        state updates that omit info[]. Kept at the bridge level (not
+        the device base class) so every specialised handle_state override
+        inherits the behaviour without remembering to call super().
+        """
+        if not isinstance(payload, dict):
+            return
+        for item in payload.get("info", []):
+            if str(item.get("text", "")) == "1109":
+                with contextlib.suppress(TypeError, ValueError):
+                    device._device_temperature_c = float(item.get("value"))  # noqa: SLF001
+                return
+
     def _add_device(self, device):
         """Add a device to the bridge."""
         self._devices[device.device_id] = device
@@ -282,6 +301,7 @@ class Bridge:
                 return
 
             _LOGGER.debug("Updating device state for %s: %s", device.name, payload)
+            self._update_device_temperature(device, payload)
             device.handle_state(payload)
         except KeyError:
             _LOGGER.warning(
@@ -298,6 +318,7 @@ class Bridge:
                 device = self._devices.get(deviceId)
                 if device:
                     _LOGGER.debug("State update for device %s: %s", device.name, item)
+                    self._update_device_temperature(device, item)
                     device.handle_state(item)
                 else:
                     # Check if this is a virtual rocker for an RcTouch device
@@ -571,6 +592,7 @@ class Bridge:
             device.dev_type = payload.get("devType")
             self._add_device(device)
 
+        self._update_device_temperature(device, payload)
         if isinstance(device, Rocker):
             device.handle_state(payload, emit_button_event=emit_button_event)
         else:

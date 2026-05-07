@@ -355,17 +355,26 @@ async def async_setup_entry(
         _LOGGER.debug("Found %s xcomfort rooms", len(rooms))
         sensors.extend(_build_room_sensors(hub, rooms, add_room_power_sensors))
 
-        # Diagnostic sensors: one Signal + one Battery (if applicable) per
-        # physical component. Attached to the primary device of each comp.
+        # Diagnostic sensors: Signal + Battery + Device Temperature per
+        # physical component, as applicable. Each one is attached to the
+        # primary device of the component.
         signal_devices = hub.get_components_with_signal()
         battery_devices = hub.get_components_with_battery()
+        # Device temperature is per-channel (silicon-level), not per-component
+        # — so it's keyed by device, not primary-device-of-comp.
+        device_temperature_devices = hub.get_devices_with_device_temperature()
         _LOGGER.debug(
-            "Found %s components with signal info, %s with battery info",
+            "Found %s components with signal info, %s with battery info, "
+            "%s devices with device temperature",
             len(signal_devices),
             len(battery_devices),
+            len(device_temperature_devices),
         )
         sensors.extend(XComfortSignalSensor(hub, d) for d in signal_devices)
         sensors.extend(XComfortBatterySensor(hub, d) for d in battery_devices)
+        sensors.extend(
+            XComfortDeviceTemperatureSensor(hub, d) for d in device_temperature_devices
+        )
 
         _LOGGER.debug("Added %s sensor entities", len(sensors))
         async_add_entities(sensors)
@@ -1718,3 +1727,49 @@ class XComfortBatterySensor(_XComfortComponentDiagnosticBase):
     def native_value(self) -> int | None:
         """Return battery percentage (0/25/50/75/100), or None if unknown."""
         return self._comp.battery_percent if self._comp is not None else None
+
+
+class XComfortDeviceTemperatureSensor(SensorEntity):
+    """Internal device (channel) temperature, diagnostic.
+
+    Reported in the device payload's info[] under text code 1109 — silicon
+    temperature used by some actuators for overload protection. This is a
+    per-channel reading (not per physical component), so each channel gets
+    its own sensor attached to the channel's own HA device card.
+    """
+
+    _attr_has_entity_name = True
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_should_poll = False
+    _attr_device_class = SensorDeviceClass.TEMPERATURE
+    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_name = "Device temperature"
+
+    def __init__(self, hub: XComfortHub, device) -> None:
+        """Initialise sensor tied to a specific device channel."""
+        self.hub = hub
+        self._device = device
+        init_entity_lifecycle(self)
+        self._attr_unique_id = (
+            f"device_temperature_{DOMAIN}_{hub.identifier}-{device.device_id}"
+        )
+        # Attach to whatever HA device card the owning platform created, so
+        # the reading shows up on e.g. the Light/Appliance/Heater card.
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, _component_device_identifier(hub, device))},
+        )
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to device state so new 1109 readings flow to the UI."""
+        await super().async_added_to_hass()
+        mark_entity_added(self)
+        subscribe_observable(self, self._device.state, self._on_state, "device.state")
+
+    def _on_state(self, _state) -> None:
+        async_write_state_safely(self, "device.state")
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the internal hardware temperature in °C, or None."""
+        return self._device.device_temperature_c

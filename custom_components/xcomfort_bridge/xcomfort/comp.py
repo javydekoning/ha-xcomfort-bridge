@@ -10,6 +10,8 @@ _LOGGER = logging.getLogger(__name__)
 
 # Info-array text codes used for component-level status. Values are the
 # i18n keys from the official app's en.json (see CLAUDE.md protocol notes).
+# NOTE: Device temperature (1109) lives on the per-channel device payload,
+# not on the component — handled in BridgeDevice, not here.
 _INFO_CODE_SIGNAL_QUALITY = "1111"
 _INFO_CODE_MAINS_POWERED = "1119"
 # Signal quality payload values map to human-readable labels. The label

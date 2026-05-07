@@ -237,6 +237,17 @@ class XComfortHub:
             result.append(d)
         return result
 
+    def get_devices_with_device_temperature(self) -> list:
+        """Return devices whose payload reports internal device temperature.
+
+        Device temperature (info code 1109) is a per-channel reading — the
+        silicon/die temperature used by the device for overload protection.
+        Discovered dynamically from the latest payload rather than
+        hardcoded by device type, so any future hardware that reports 1109
+        picks up a sensor automatically.
+        """
+        return [d for d in self.devices if d.device_temperature_c is not None]
+
     # ---------------------------------------------------------------------
 
     async def test_connection(self) -> bool:
