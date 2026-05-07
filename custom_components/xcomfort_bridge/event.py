@@ -6,6 +6,7 @@ import logging
 from homeassistant.components.event import EventDeviceClass, EventEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
@@ -71,6 +72,39 @@ def _is_momentary_rocker(comp: Comp) -> bool:
     return True
 
 
+def _migrate_event_unique_ids(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    hub: XComfortHub,
+) -> None:
+    """Rewrite legacy event unique_ids to the hub-scoped format.
+
+    Earlier versions of this integration used `event_{DOMAIN}_{device_id}`
+    for event entities' unique_ids, which collided across config entries
+    when two bridges happened to assign the same internal device_id (HA's
+    entity registry is global). The current format is
+    `event_{DOMAIN}_{hub.identifier}-{device_id}`.
+
+    This migration rewrites any existing registry entries belonging to
+    THIS config entry from the old format to the new one, preserving
+    entity_id and therefore any automations referencing it. Entries that
+    belong to a different config entry are left alone — they'll be handled
+    by that entry's own setup pass.
+    """
+    registry = er.async_get(hass)
+    for device in hub.get_rockers() + hub.get_rctouches():
+        old = f"event_{DOMAIN}_{device.device_id}"
+        new = f"event_{DOMAIN}_{hub.identifier}-{device.device_id}"
+        entity_id = registry.async_get_entity_id("event", DOMAIN, old)
+        if entity_id is None:
+            continue
+        reg_entry = registry.async_get(entity_id)
+        if reg_entry is None or reg_entry.config_entry_id != entry.entry_id:
+            continue
+        _LOGGER.info("Migrating event unique_id %s -> %s (%s)", old, new, entity_id)
+        registry.async_update_entity(entity_id, new_unique_id=new)
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -81,6 +115,8 @@ async def async_setup_entry(
 
     async def _wait_for_hub_then_setup():
         await hub.has_done_initial_load.wait()
+
+        _migrate_event_unique_ids(hass, entry, hub)
 
         events = []
 
@@ -262,7 +298,7 @@ class XComfortEvent(XComfortButtonEventBase):
             # For single-channel, use just the device name since the component name is the device name
             self._attr_name = device.name
 
-        self._attr_unique_id = f"event_{DOMAIN}_{device.device_id}"
+        self._attr_unique_id = f"event_{DOMAIN}_{hub.identifier}-{device.device_id}"
         self._device = device
         self._init_button_event_state()
 
@@ -326,7 +362,7 @@ class XComfortRcTouchEvent(XComfortButtonEventBase):
         ]
         self._attr_has_entity_name = True
         self._attr_name = "Button"
-        self._attr_unique_id = f"event_{DOMAIN}_{device.device_id}"
+        self._attr_unique_id = f"event_{DOMAIN}_{hub.identifier}-{device.device_id}"
         self._device = device
         self._init_button_event_state()
 
