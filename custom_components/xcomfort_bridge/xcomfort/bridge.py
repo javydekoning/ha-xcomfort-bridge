@@ -564,6 +564,11 @@ class Bridge:
             if device is None:
                 return
 
+            # Stamp devType onto the instance so peers can tell channels
+            # (rocker 211) apart from the companion temp/humidity sensor
+            # (451) on the same component. Needed by multi-channel PBMS
+            # rockers to find their shared sensor device.
+            device.dev_type = payload.get("devType")
             self._add_device(device)
 
         if isinstance(device, Rocker):
