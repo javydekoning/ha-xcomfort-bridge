@@ -19,6 +19,6 @@
   "issue_tracker": "https://github.com/javydekoning/ha-xcomfort-bridge/issues",
   "requirements": ["rx==3.2.0", "pycryptodome==3.23.0"],
   "ssdp": [],
-  "version": "0.7.1",
+  "version": "0.8.0-beta1",
   "zeroconf": []
 }
