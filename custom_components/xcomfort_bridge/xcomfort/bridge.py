@@ -115,6 +115,12 @@ class Bridge:
         # create duplicate entities.
         self.scene_added = rx.subject.Subject()
         self.scene_removed = rx.subject.Subject()
+        # Fires the Room instance every time we see a payload confirming the
+        # room is climate-capable (temperatureOnly == False). Rooms often
+        # arrive climate-capable in a *later* message than the initial room
+        # record (specifically the roomHeating slice of SET_ALL_DATA), so a
+        # one-shot climate-entity setup can miss them. Subscribers dedupe.
+        self.room_became_climate = rx.subject.Subject()
 
         self.logger = _LOGGER.warning
 
@@ -613,6 +619,13 @@ class Bridge:
             self._add_room(room)
 
         room.handle_state(payload)
+
+        # Notify the climate platform that this room is (or has become)
+        # climate-capable. Emitting on every matching update is fine —
+        # the platform dedupes by room_id, so re-emits are no-ops.
+        room_raw = getattr(room.state.value, "raw", None)
+        if isinstance(room_raw, dict) and room_raw.get("temperatureOnly") is False:
+            self.room_became_climate.on_next(room)
 
     def _handle_SET_ALL_DATA(self, payload):
         """Handle initial data setup."""

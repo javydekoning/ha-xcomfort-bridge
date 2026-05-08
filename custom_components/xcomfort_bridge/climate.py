@@ -43,6 +43,15 @@ async def async_setup_entry(
 ) -> None:
     """Set up the xComfort climate platform.
 
+    A room becomes climate-capable when the bridge confirms
+    ``temperatureOnly == False`` in one of its updates. That field often
+    arrives in the ``roomHeating`` slice of ``SET_ALL_DATA``, which is a
+    separate message following the initial room snapshot — so we can't
+    enumerate rooms once and be done. Instead subscribe to the bridge's
+    ``room_became_climate`` stream and add entities as rooms qualify.
+    Dedupe by room_id so repeated emissions (same room, later payloads,
+    or reconnect-replays) don't create duplicates.
+
     Args:
         hass: Home Assistant instance
         entry: Config entry
@@ -50,60 +59,51 @@ async def async_setup_entry(
 
     """
     hub = XComfortHub.get_hub(hass, entry)
+    entities_by_room_id: dict[int, HASSXComfortRoomClimate] = {}
 
-    async def _wait_for_hub_then_setup():
+    def _resolve_sensor_device(room: Room) -> RcTouch | None:
+        """Look up the room's configured temperature sensor, if any."""
+        raw = getattr(room.state.value, "raw", None)
+        if not isinstance(raw, dict):
+            return None
+        room_sensor_id = raw.get("roomSensorId")
+        if room_sensor_id is None or room_sensor_id == 0:
+            return None
+        return next(
+            (d for d in hub.devices if d.device_id == room_sensor_id),
+            None,
+        )
+
+    def _on_room_became_climate(room: Room) -> None:
+        """Create a climate entity for a room that just became climate-capable."""
+        if room.room_id in entities_by_room_id:
+            return  # already created, bridge re-emitted state
+        sensor_device = _resolve_sensor_device(room)
+        _LOGGER.info(
+            "Creating climate entity for room '%s' (room_id=%s, sensor=%s)",
+            room.name,
+            room.room_id,
+            sensor_device.name if sensor_device is not None else "none",
+        )
+        entity = HASSXComfortRoomClimate(hass, hub, room, sensor_device)
+        entities_by_room_id[room.room_id] = entity
+        async_add_entities([entity])
+
+    subscription = hub.bridge.room_became_climate.subscribe(_on_room_became_climate)
+    entry.async_on_unload(subscription.dispose)
+
+    # Also run once after initial load so that rooms which were already
+    # climate-capable at subscribe-time (their update fired before we
+    # attached) still get picked up — BehaviorSubject isn't appropriate
+    # here because the event needs to be per-room, not a single latest.
+    async def _process_existing_rooms():
         await hub.has_done_initial_load.wait()
+        for room in hub.rooms:
+            raw = getattr(room.state.value, "raw", None)
+            if isinstance(raw, dict) and raw.get("temperatureOnly") is False:
+                _on_room_became_climate(room)
 
-        devices = hub.devices
-        rooms = hub.rooms
-
-        _LOGGER.debug("Found %d xcomfort rooms", len(list(rooms)))
-
-        # Create a mapping of device_id to device for linking room sensors
-        devices_by_id = {device.device_id: device for device in devices}
-
-        climate_entities = []
-        for room in rooms:
-            # Check if room has climate control (temperatureOnly must exist and be False)
-            if room.state.value is not None and hasattr(room.state.value, "raw"):
-                raw = room.state.value.raw
-
-                # Only create climate entity if temperatureOnly exists and is False
-                if "temperatureOnly" in raw and raw.get("temperatureOnly") is False:
-                    # Get the sensor device if roomSensorId is specified
-                    sensor_device = None
-                    room_sensor_id = raw.get("roomSensorId")
-                    if room_sensor_id is not None:
-                        sensor_device = devices_by_id.get(room_sensor_id)
-                        if sensor_device:
-                            _LOGGER.debug(
-                                "Room '%s' linked to sensor device '%s' (ID: %d)",
-                                room.name,
-                                sensor_device.name
-                                if hasattr(sensor_device, "name")
-                                else "Unknown",
-                                room_sensor_id,
-                            )
-
-                    _LOGGER.debug(
-                        "Creating climate entity for room '%s' (temperatureOnly=False)",
-                        room.name,
-                    )
-                    climate_entity = HASSXComfortRoomClimate(
-                        hass, hub, room, sensor_device
-                    )
-                    climate_entities.append(climate_entity)
-                else:
-                    _LOGGER.debug(
-                        "Skipping climate entity for room '%s' (temperatureOnly=%s)",
-                        room.name,
-                        raw.get("temperatureOnly", "not set"),
-                    )
-
-        _LOGGER.debug("Added %d room climate entities", len(climate_entities))
-        async_add_entities(climate_entities)
-
-    entry.async_create_task(hass, _wait_for_hub_then_setup())
+    entry.async_create_task(hass, _process_existing_rooms())
 
 
 class HASSXComfortRoomClimate(ClimateEntity):
