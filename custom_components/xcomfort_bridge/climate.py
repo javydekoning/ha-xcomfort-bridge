@@ -60,6 +60,7 @@ async def async_setup_entry(
     """
     hub = XComfortHub.get_hub(hass, entry)
     entities_by_room_id: dict[int, HASSXComfortRoomClimate] = {}
+    _LOGGER.debug("climate.async_setup_entry starting for entry %s", entry.entry_id)
 
     def _resolve_sensor_device(room: Room) -> RcTouch | None:
         """Look up the room's configured temperature sensor, if any."""
@@ -98,8 +99,21 @@ async def async_setup_entry(
     # here because the event needs to be per-room, not a single latest.
     async def _process_existing_rooms():
         await hub.has_done_initial_load.wait()
-        for room in hub.rooms:
+        rooms = list(hub.rooms)
+        _LOGGER.debug(
+            "climate backfill: scanning %d rooms after initial load", len(rooms)
+        )
+        for room in rooms:
             raw = getattr(room.state.value, "raw", None)
+            temp_only = (
+                raw.get("temperatureOnly") if isinstance(raw, dict) else "missing"
+            )
+            _LOGGER.debug(
+                "climate backfill: room_id=%s name=%s temperatureOnly=%s",
+                room.room_id,
+                room.name,
+                temp_only,
+            )
             if isinstance(raw, dict) and raw.get("temperatureOnly") is False:
                 _on_room_became_climate(room)
 
