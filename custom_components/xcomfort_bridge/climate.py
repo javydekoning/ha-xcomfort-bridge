@@ -60,7 +60,6 @@ async def async_setup_entry(
     """
     hub = XComfortHub.get_hub(hass, entry)
     entities_by_room_id: dict[int, HASSXComfortRoomClimate] = {}
-    _LOGGER.debug("climate.async_setup_entry starting for entry %s", entry.entry_id)
 
     def _resolve_sensor_device(room: Room) -> RcTouch | None:
         """Look up the room's configured temperature sensor, if any."""
@@ -99,21 +98,8 @@ async def async_setup_entry(
     # here because the event needs to be per-room, not a single latest.
     async def _process_existing_rooms():
         await hub.has_done_initial_load.wait()
-        rooms = list(hub.rooms)
-        _LOGGER.debug(
-            "climate backfill: scanning %d rooms after initial load", len(rooms)
-        )
-        for room in rooms:
+        for room in hub.rooms:
             raw = getattr(room.state.value, "raw", None)
-            temp_only = (
-                raw.get("temperatureOnly") if isinstance(raw, dict) else "missing"
-            )
-            _LOGGER.debug(
-                "climate backfill: room_id=%s name=%s temperatureOnly=%s",
-                room.room_id,
-                room.name,
-                temp_only,
-            )
             if isinstance(raw, dict) and raw.get("temperatureOnly") is False:
                 _on_room_became_climate(room)
 
@@ -221,25 +207,55 @@ class HASSXComfortRoomClimate(ClimateEntity):
     def _sensor_device_state_change(self, state):
         """Handle sensor device state changes for temperature and humidity.
 
+        The linked sensor can be an RcTouch (typed state, exposes
+        `.temperature` / `.humidity`) or a PBMS companion sensor
+        (generic DeviceState, only exposes `.raw`). Handle both: prefer
+        the typed attributes when present, fall back to parsing
+        info-codes 1222 (temperature) / 1223 (humidity) from the raw
+        payload. This is the same shape the Rocker multisensor path
+        already parses.
+
         Args:
-            state: New state from the sensor device (e.g., RcTouch)
+            state: New state from the sensor device
 
         """
-        if state is not None:
-            # Sensor device readings override room readings
-            if state.temperature is not None:
-                self.temperature = state.temperature
-            if state.humidity is not None:
-                self.humidity = state.humidity
+        if state is None:
+            return
 
-            _LOGGER.debug(
-                "Sensor device state changed for room %s : temp=%s, humidity=%s",
-                self._name,
-                state.temperature,
-                state.humidity,
-            )
+        temperature = getattr(state, "temperature", None)
+        humidity = getattr(state, "humidity", None)
 
-            schedule_state_update_safely(self, "sensor_device.state")
+        if temperature is None or humidity is None:
+            raw = getattr(state, "raw", None)
+            if isinstance(raw, dict):
+                for info in raw.get("info", []):
+                    text = str(info.get("text", ""))
+                    value = info.get("value")
+                    if value in (None, ""):
+                        continue
+                    try:
+                        numeric = float(value)
+                    except (TypeError, ValueError):
+                        continue
+                    if text == "1222" and temperature is None:
+                        temperature = numeric
+                    elif text == "1223" and humidity is None:
+                        humidity = numeric
+
+        # Sensor device readings override room readings when available.
+        if temperature is not None:
+            self.temperature = temperature
+        if humidity is not None:
+            self.humidity = humidity
+
+        _LOGGER.debug(
+            "Sensor device state changed for room %s : temp=%s, humidity=%s",
+            self._name,
+            temperature,
+            humidity,
+        )
+
+        schedule_state_update_safely(self, "sensor_device.state")
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode):
         """Set new HVAC mode.
