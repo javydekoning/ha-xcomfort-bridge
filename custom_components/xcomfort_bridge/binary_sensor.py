@@ -10,6 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .device_info import get_motion_sensor_device_info
 from .entity_lifecycle import (
     init_entity_lifecycle,
     mark_entity_added,
@@ -17,7 +18,7 @@ from .entity_lifecycle import (
     subscribe_observable,
 )
 from .hub import XComfortHub
-from .xcomfort.devices import DoorSensor, DoorWindowSensor, WindowSensor
+from .xcomfort.devices import DoorSensor, DoorWindowSensor, MotionSensor, WindowSensor
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -49,6 +50,11 @@ async def async_setup_entry(
             XComfortDoorWindowSensor(hub, device)
             for device in devices
             if isinstance(device, DoorWindowSensor)
+        )
+        sensors.extend(
+            XComfortMotionSensor(hub, device)
+            for device in devices
+            if isinstance(device, MotionSensor)
         )
 
         async_add_entities(sensors)
@@ -112,3 +118,34 @@ class XComfortDoorWindowSensor(BinarySensorEntity):
 
         """
         return self._device and self._device.is_open
+
+
+class XComfortMotionSensor(BinarySensorEntity):
+    """Representation of an xComfort motion sensor."""
+
+    _attr_has_entity_name = True
+    _attr_name = None
+    _attr_device_class = BinarySensorDeviceClass.MOTION
+
+    def __init__(self, hub: XComfortHub, device: MotionSensor) -> None:
+        """Initialize the motion binary sensor."""
+        super().__init__()
+        self.hub = hub
+        self._device = device
+        self._attr_unique_id = f"motion_{hub.identifier}_{device.device_id}"
+        self._attr_device_info = get_motion_sensor_device_info(hub, device)
+        self._attr_is_on = device.motion
+        init_entity_lifecycle(self)
+
+    async def async_added_to_hass(self):
+        """Subscribe to motion updates."""
+        await super().async_added_to_hass()
+        mark_entity_added(self)
+        subscribe_observable(
+            self, self._device.state, self._state_change, "device.state"
+        )
+
+    def _state_change(self, motion: bool | None):
+        """Handle motion state changes from the device."""
+        self._attr_is_on = motion
+        schedule_state_update_safely(self, "device.state")

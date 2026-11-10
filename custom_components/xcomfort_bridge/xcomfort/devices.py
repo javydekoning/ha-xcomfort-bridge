@@ -14,7 +14,7 @@ from .device_climate import Heater, RcTouch
 from .device_heating_valve import HeatingValve
 from .device_light import Light
 from .device_rocker import Rocker
-from .device_sensors import DoorSensor, DoorWindowSensor, WindowSensor
+from .device_sensors import DoorSensor, DoorWindowSensor, MotionSensor, WindowSensor
 from .device_shade import Shade
 from .device_states import (
     DeviceState,
@@ -42,6 +42,7 @@ __all__ = [
     # Device classes
     "Light",
     "LightState",
+    "MotionSensor",
     "RcTouch",
     "RcTouchState",
     "Rocker",

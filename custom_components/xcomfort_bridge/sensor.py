@@ -36,17 +36,30 @@ from .const import (
     CONF_POWER_ENERGY_SECTION,
     DOMAIN,
 )
-from .device_info import get_heating_valve_device_info, get_rctouch_device_info
+from .device_info import (
+    get_heating_valve_device_info,
+    get_motion_sensor_device_info,
+    get_rctouch_device_info,
+)
 from .entity_lifecycle import (
     async_write_state_safely,
     init_entity_lifecycle,
     mark_entity_added,
+    schedule_state_update_safely,
     subscribe_observable,
 )
 from .hub import XComfortHub
 from .xcomfort.bridge import Room
 from .xcomfort.constants import ComponentTypes
-from .xcomfort.devices import Appliance, Heater, HeatingValve, Light, RcTouch, Rocker
+from .xcomfort.devices import (
+    Appliance,
+    Heater,
+    HeatingValve,
+    Light,
+    MotionSensor,
+    RcTouch,
+    Rocker,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -197,6 +210,9 @@ def _build_device_sensors(
             )
             sensors.append(XComfortAppliancePowerSensor(hub, device))
             sensors.append(XComfortApplianceEnergySensor(hub, device))
+        elif isinstance(device, MotionSensor):
+            _LOGGER.debug("Adding battery sensor for MotionSensor %s", device.name)
+            sensors.append(XComfortMotionSensorBattery(hub, device))
         elif isinstance(device, Rocker) and device.has_sensors:
             comp = device.bridge._comps.get(device.comp_id)  # noqa: SLF001
             if not comp:
@@ -1586,3 +1602,38 @@ class XComfortHeatingValvePositionSensor(SensorEntity):
     def native_value(self):
         """Return the current value."""
         return self._state and self._state.valve_position
+
+
+class XComfortMotionSensorBattery(SensorEntity):
+    """Approximate battery level of an xComfort motion sensor.
+
+    The bridge only reports coarse levels (empty/weak/medium/good/full),
+    mapped to 0/25/50/75/100 %.
+    """
+
+    _attr_has_entity_name = True
+    _attr_device_class = SensorDeviceClass.BATTERY
+    _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, hub: XComfortHub, device: MotionSensor) -> None:
+        """Initialize the battery sensor."""
+        self.hub = hub
+        self._device = device
+        self._attr_unique_id = f"battery_{hub.identifier}_{device.device_id}"
+        self._attr_device_info = get_motion_sensor_device_info(hub, device)
+        self._attr_native_value = device.battery_level
+        init_entity_lifecycle(self)
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to battery updates."""
+        await super().async_added_to_hass()
+        mark_entity_added(self)
+        subscribe_observable(
+            self, self._device.battery, self._battery_change, "device.battery"
+        )
+
+    def _battery_change(self, level: int | None) -> None:
+        self._attr_native_value = level
+        schedule_state_update_safely(self, "device.battery")
