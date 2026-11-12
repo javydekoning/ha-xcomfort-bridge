@@ -708,8 +708,6 @@ class Bridge:
             for device in self._devices.values():
                 if isinstance(device, Rocker) and device.has_sensors:
                     device.wire_up_sensor_companion()
-                elif isinstance(device, MotionSensor):
-                    device.wire_up_component()
 
         if "rooms" in payload:
             _LOGGER.debug(
