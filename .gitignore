@@ -147,3 +147,6 @@ arbeidsmappe/
 # apk decompiled
 apk/
 .devcontainer/devcontainer-lock.json
+.DS_Store
+CLAUDE.md
+config_entry-xcomfort_bridge-*

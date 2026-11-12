@@ -37,15 +37,10 @@ async def async_setup_entry(
     async def _wait_for_hub_then_setup():
         await hub.has_done_initial_load.wait()
 
-        devices = hub.devices
-        _LOGGER.debug("Found %s xcomfort devices", len(devices))
+        appliances = hub.get_appliances()
+        _LOGGER.debug("Found %s xcomfort appliances", len(appliances))
 
-        switches = []
-        for device in devices:
-            if isinstance(device, Appliance):
-                _LOGGER.debug("Adding appliance switch %s", device)
-                switches.append(HASSXComfortSwitch(hass, hub, device))
-
+        switches = [HASSXComfortSwitch(hass, hub, device) for device in appliances]
         _LOGGER.debug("Added %s switches", len(switches))
         async_add_entities(switches)
 

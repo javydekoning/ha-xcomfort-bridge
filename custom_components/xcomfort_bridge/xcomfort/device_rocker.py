@@ -5,7 +5,7 @@ import time
 
 import rx
 
-from .constants import ComponentTypes
+from .constants import ComponentTypes, DeviceTypes
 from .device_base import BridgeDevice
 from .device_states import RockerSensorState
 
@@ -83,11 +83,19 @@ class Rocker(BridgeDevice):
     def _find_and_subscribe_sensor_device(self) -> None:
         """Find companion sensor device and subscribe to its updates.
 
-        The companion device might not be created yet during initialization,
-        so this method can be called multiple times.
+        On a multi-channel Pushbutton Multi-Sensor the component exposes
+        both N rocker channels (devType ROCKER_BINARY_INPUT) AND one
+        temperature/humidity sensor channel (devType TEMP_HUMIDITY_SENSOR).
+        All share the same comp_id. We therefore have to match by devType
+        — matching by comp_id alone would pick a sibling rocker on multi-
+        channel devices and temp/humidity would never flow through.
 
-        Search strategy:
-        - Find sensor with the same comp_id
+        Also tolerant of a TEMP_SENSOR (410) fallback in case a variant
+        exposes temperature only.
+
+        The companion may not be created yet at init time (device creation
+        order within SET_ALL_DATA isn't fixed), so this method is idempotent
+        and called again from handle_state when new state arrives.
         """
         if self._sensor_device is not None:
             return  # Already found and subscribed
@@ -99,29 +107,35 @@ class Rocker(BridgeDevice):
             self.comp_id,
         )
 
+        sensor_dev_types = (
+            DeviceTypes.TEMP_HUMIDITY_SENSOR,
+            DeviceTypes.TEMP_SENSOR,
+        )
         for device in self.bridge._devices.values():  # noqa: SLF001
             if (
                 device.device_id != self.device_id
-                and hasattr(device, "comp_id")
-                and device.comp_id == self.comp_id
+                and getattr(device, "comp_id", None) == self.comp_id
+                and getattr(device, "dev_type", None) in sensor_dev_types
             ):
-                # Found a companion device in the same component
                 _LOGGER.info(
-                    "Rocker %s found companion sensor device by comp_id: %s (device_id=%s)",
+                    "Rocker %s found companion sensor device: %s (device_id=%s, devType=%s)",
                     self.name,
                     device.name,
                     device.device_id,
+                    device.dev_type,
                 )
                 self._sensor_device = device
-                # Subscribe to its state updates
                 device.state.subscribe(self._on_sensor_device_update)
                 return
 
-        # Not found yet - will retry on first state update
+        # Not found yet - will retry on next state update or comp update.
         _LOGGER.debug(
             "Rocker %s: companion sensor device not found yet. Available devices: %s",
             self.name,
-            list(self.bridge._devices.keys()),  # noqa: SLF001
+            [
+                (d.device_id, getattr(d, "dev_type", None), getattr(d, "comp_id", None))
+                for d in self.bridge._devices.values()  # noqa: SLF001
+            ],
         )
 
     def _on_sensor_device_update(self, state) -> None:
