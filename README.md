@@ -12,8 +12,8 @@ Eaton xComfort integration with Home Assistant. Note that you need the **xComfor
 | Push Button 2-Fold              | CTAA-02/04     | YES    | YES        |
 | Push Button 4-Fold              | CTAA-04/04     | YES    | YES        |
 | Push Button MultiSensor 1-Fold  | CTSA-01/04     | YES    | YES        |
-| Push Button MultiSensor 2-Fold  | CTSA-02/04     | No     | No         |
-| Push Button MultiSensor 4-Fold  | CTSA-04/04     | No     | No         |
+| Push Button MultiSensor 2-Fold  | CTSA-02/04     | YES    | YES        |
+| Push Button MultiSensor 4-Fold  | CTSA-04/04     | YES    | YES        |
 | Remote Control 2-Channel (mini) | CHSZ-02/02     | YES    | YES        |
 | Switching Plug                  | CSAP-01/F5-12E | YES    | No         |
 | Heating Actuator                | CHAU-01/01-10E | YES    | YES        |

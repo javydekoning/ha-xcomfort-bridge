@@ -1,12 +1,14 @@
 """Bridge module for xComfort integration."""
 
 import asyncio
+import contextlib
 from enum import Enum
 import logging
 
 import aiohttp
 import rx
 
+from .app_info import format_app_info
 from .comp import Comp, CompState  # noqa: F401
 from .connection import InvalidAuth, SecureBridgeConnection, setup_secure_connection
 from .constants import ClimateMode, ComponentTypes, DeviceTypes, Messages
@@ -43,10 +45,21 @@ class State(Enum):
 class Bridge:
     """Main bridge class for xComfort communication."""
 
-    def __init__(self, ip_address: str, authkey: str, session=None):
-        """Initialize bridge with IP address and auth key."""
+    def __init__(
+        self,
+        ip_address: str,
+        authkey: str,
+        session=None,
+        username: str = "default",
+    ):
+        """Initialize bridge with IP address, auth key and optional username.
+
+        `username` defaults to "default" (device auth code flow); pass a
+        named user account to log in as a user-mode account.
+        """
         self.ip_address = ip_address
         self.authkey = authkey
+        self.username = username
 
         if session is None:
             session = aiohttp.ClientSession()
@@ -70,6 +83,11 @@ class Bridge:
         self._scenes = {}
         self.state = State.Uninitialized
         self.on_initialized = asyncio.Event()
+        # Fires once SET_BRIDGE_DATA (303) has populated bridge_name / model.
+        # SET_BRIDGE_DATA can arrive after SET_ALL_DATA's lastItem terminator,
+        # so callers that need the metadata must wait on this event, not just
+        # on on_initialized.
+        self.on_metadata_received = asyncio.Event()
         self.connection = None
         self.connection_subscription = None
 
@@ -90,6 +108,20 @@ class Bridge:
         # whether the bridge currently has an active cloud link.
         self.remote_allowed = rx.subject.BehaviorSubject(None)
         self.remote_online = rx.subject.BehaviorSubject(None)
+
+        # Event streams for entity lifecycle — platforms subscribe here to add
+        # or drop HA entities as the bridge reports changes. Plain Subject
+        # (not BehaviorSubject) because these are edge events, not state:
+        # late subscribers shouldn't replay "add" events and accidentally
+        # create duplicate entities.
+        self.scene_added = rx.subject.Subject()
+        self.scene_removed = rx.subject.Subject()
+        # Fires the Room instance every time we see a payload confirming the
+        # room is climate-capable (temperatureOnly == False). Rooms often
+        # arrive climate-capable in a *later* message than the initial room
+        # record (specifically the roomHeating slice of SET_ALL_DATA), so a
+        # one-shot climate-entity setup can miss them. Subscribers dedupe.
+        self.room_became_climate = rx.subject.Subject()
 
         self.logger = _LOGGER.warning
 
@@ -114,6 +146,16 @@ class Bridge:
     def scenes(self):
         """Get scenes dictionary."""
         return self._scenes
+
+    @property
+    def scenes_count(self) -> int:
+        """Return the number of scenes known to the bridge.
+
+        Distinct from `home_scenes_count`, which reflects the 4-slot
+        dashboard quick-access scene array (often contains zeros for
+        empty slots).
+        """
+        return len(self._scenes)
 
     async def run(self):
         """Run the bridge main loop."""
@@ -173,6 +215,24 @@ class Bridge:
         self._comps[comp.comp_id] = comp
         _LOGGER.debug("Added component: %s (type: %s)", comp.name, comp.comp_type)
 
+    @staticmethod
+    def _update_device_temperature(device, payload):
+        """Cache info-code 1109 (°C) onto the device if the payload carries it.
+
+        Called centrally before dispatching a payload into a device's
+        handle_state, so the cached value survives subsequent partial
+        state updates that omit info[]. Kept at the bridge level (not
+        the device base class) so every specialised handle_state override
+        inherits the behaviour without remembering to call super().
+        """
+        if not isinstance(payload, dict):
+            return
+        for item in payload.get("info", []):
+            if str(item.get("text", "")) == "1109":
+                with contextlib.suppress(TypeError, ValueError):
+                    device._device_temperature_c = float(item.get("value"))  # noqa: SLF001
+                return
+
     def _add_device(self, device):
         """Add a device to the bridge."""
         self._devices[device.device_id] = device
@@ -214,6 +274,10 @@ class Bridge:
         """Add a scene to the bridge."""
         self._scenes[scene.scene_id] = scene
         _LOGGER.debug("Added scene: %s (id: %s)", scene.name, scene.scene_id)
+        # Notify HA platform. Fired from both the initial SET_ALL_DATA pass
+        # and runtime SET_SCENE / SET_SCENE_ID messages; the platform dedupes
+        # by scene_id so replays are harmless.
+        self.scene_added.on_next(scene)
 
     def _handle_SET_DEVICE_STATE(self, payload):
         """Handle device state updates."""
@@ -244,6 +308,7 @@ class Bridge:
                 return
 
             _LOGGER.debug("Updating device state for %s: %s", device.name, payload)
+            self._update_device_temperature(device, payload)
             device.handle_state(payload)
         except KeyError:
             _LOGGER.warning(
@@ -260,6 +325,7 @@ class Bridge:
                 device = self._devices.get(deviceId)
                 if device:
                     _LOGGER.debug("State update for device %s: %s", device.name, item)
+                    self._update_device_temperature(device, item)
                     device.handle_state(item)
                 else:
                     # Check if this is a virtual rocker for an RcTouch device
@@ -534,8 +600,14 @@ class Bridge:
             if device is None:
                 return
 
+            # Stamp devType onto the instance so peers can tell channels
+            # (rocker 211) apart from the companion temp/humidity sensor
+            # (451) on the same component. Needed by multi-channel PBMS
+            # rockers to find their shared sensor device.
+            device.dev_type = payload.get("devType")
             self._add_device(device)
 
+        self._update_device_temperature(device, payload)
         if isinstance(device, Rocker):
             device.handle_state(payload, emit_button_event=emit_button_event)
         else:
@@ -556,6 +628,13 @@ class Bridge:
             self._add_room(room)
 
         room.handle_state(payload)
+
+        # Notify the climate platform that this room is (or has become)
+        # climate-capable. Emitting on every matching update is fine —
+        # the platform dedupes by room_id, so re-emits are no-ops.
+        room_raw = getattr(room.state.value, "raw", None)
+        if isinstance(room_raw, dict) and room_raw.get("temperatureOnly") is False:
+            self.room_became_climate.on_next(room)
 
     def _handle_SET_ALL_DATA(self, payload):
         """Handle initial data setup."""
@@ -677,6 +756,12 @@ class Bridge:
         self.bridge_name = payload.get("name")
         self.bridge_type = payload.get("bridgeType")
 
+        # Signal to setup that bridge metadata is available. The bridge may
+        # push SET_BRIDGE_DATA repeatedly; only the first payload carrying
+        # identifying fields matters for the one-shot "ready" event.
+        if self.bridge_id is not None or self.bridge_name is not None:
+            self.on_metadata_received.set()
+
         # Extract home scenes count
         home_scenes = payload.get("homeScenes", [])
         self.home_scene_ids = list(home_scenes)
@@ -736,6 +821,27 @@ class Bridge:
         removed = self._scenes.pop(scene_id, None)
         if removed:
             _LOGGER.info("Removed scene %s (id: %s)", removed.name, scene_id)
+        # Emit regardless: an HA entity may exist from a prior session even if
+        # the bridge-side object is already gone.
+        self.scene_removed.on_next(scene_id)
+
+    def _handle_APP_INFO(self, payload):
+        """Log bridge-side app info notifications in human-readable form."""
+        code, message = format_app_info(payload)
+        _LOGGER.warning("Bridge app info [%s]: %s", code, message)
+
+    def _handle_SET_COMP_INFO(self, payload):
+        """Handle component info updates (signal, battery, mains status).
+
+        Delegates to the comp payload handler, which updates the component's
+        stored payload and emits on its state observable. Entities that
+        subscribe to comp.state (e.g. the signal / battery sensors) pick up
+        the new info on the next emission.
+        """
+        if "compId" not in payload:
+            _LOGGER.warning("SET_COMP_INFO payload missing compId: %s", payload)
+            return
+        self._handle_comp_payload(payload)
 
     def _handle_SET_BRIDGE_STATE(self, payload):
         """Handle bridge state updates for sensors."""
@@ -796,7 +902,7 @@ class Bridge:
         """Establish connection to bridge."""
         _LOGGER.debug("Setting up secure connection to bridge")
         self.connection = await setup_secure_connection(
-            self._session, self.ip_address, self.authkey
+            self._session, self.ip_address, self.authkey, self.username
         )
         self.connection_subscription = self.connection.messages.subscribe(
             self._onMessage
@@ -812,6 +918,7 @@ class Bridge:
         _LOGGER.info("Closing bridge connection")
         self.state = State.Closing
         self.on_initialized.clear()
+        self.on_metadata_received.clear()
 
         if isinstance(self.connection, SecureBridgeConnection):
             self.connection_subscription.dispose()

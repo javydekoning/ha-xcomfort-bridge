@@ -18,11 +18,9 @@ from .entity_lifecycle import (
     subscribe_observable,
 )
 from .hub import XComfortHub
-from .xcomfort.devices import DoorSensor, DoorWindowSensor, MotionSensor, WindowSensor
+from .xcomfort.devices import DoorSensor, MotionSensor, WindowSensor
 
 _LOGGER = logging.getLogger(__name__)
-
-x = 123
 
 
 async def async_setup_entry(
@@ -42,21 +40,15 @@ async def async_setup_entry(
         """Wait for hub to complete initial load then set up binary sensors."""
         await hub.has_done_initial_load.wait()
 
-        devices = hub.devices
-        sensors = []
-
-        # Create a generator expression and extend the list with it
-        sensors.extend(
+        sensors = [
             XComfortDoorWindowSensor(hub, device)
-            for device in devices
-            if isinstance(device, DoorWindowSensor)
-        )
+            for device in hub.get_door_window_sensors()
+        ]
         sensors.extend(
             XComfortMotionSensor(hub, device)
-            for device in devices
+            for device in hub.devices
             if isinstance(device, MotionSensor)
         )
-
         async_add_entities(sensors)
 
     entry.async_create_task(hass, _wait_for_hub_then_setup())
