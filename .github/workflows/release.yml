@@ -1,0 +1,132 @@
+---
+# Manually triggered official release.
+#
+# Actions → Release → Run workflow, enter a version (e.g. 0.8.0 or
+# 0.9.0-beta1). The workflow then:
+#   1. checks that CI passed on the current main commit,
+#   2. sets the version in manifest.json and commits it to main (skipped if
+#      the manifest already has that version),
+#   3. tags v<version> and publishes a GitHub release with generated notes.
+# Versions with a suffix (e.g. -beta1) are published as pre-releases.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version without leading v, e.g. 0.8.0 or 0.9.0-beta1"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+
+env:
+  REQUIRED_WORKFLOWS: "Validate with hassfest,MegaLinter,RuffLinter"
+  MANIFEST: custom_components/xcomfort_bridge/manifest.json
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Release v${{ inputs.version }}
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Validate input and CI status
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$1"; exit 1; }
+
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+(\.[0-9A-Za-z]+)*)?$ ]] \
+            || fail "'$VERSION' is not a valid version (expected e.g. 0.8.0 or 0.9.0-beta1)"
+          [[ "$VERSION" =~ -pr[0-9]+ ]] && fail "-prN versions are reserved for PR test releases"
+          git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null && fail "Tag v$VERSION already exists"
+
+          # Every required workflow must have succeeded on the current main commit.
+          sha=$(git rev-parse HEAD)
+          runs=$(gh api "repos/$REPO/actions/runs?head_sha=$sha&event=push&per_page=100" \
+            --jq '.workflow_runs')
+          IFS=, read -ra required <<<"$REQUIRED_WORKFLOWS"
+          for wf in "${required[@]}"; do
+            result=$(jq -r --arg n "$wf" '
+              [.[] | select(.name == $n)] | sort_by(.created_at) | last
+              | if . == null then "missing"
+                elif .status != "completed" then "pending"
+                else .conclusion end' <<<"$runs")
+            [ "$result" = success ] || fail "'$wf' is $result on main ($sha)"
+          done
+
+          if [[ "$VERSION" == *-* ]]; then
+            prerelease=true
+            # Notes since the previous official release or beta (never a PR test build).
+            pattern='^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'
+          else
+            prerelease=false
+            # Notes for a stable release cover everything since the previous stable one.
+            pattern='^v[0-9]+\.[0-9]+\.[0-9]+$'
+          fi
+          start_tag=$(gh release list --repo "$REPO" --limit 200 --json tagName,createdAt \
+            | jq -r --arg p "$pattern" '
+                [.[] | select(.tagName | test("-pr[0-9]+") | not) | select(.tagName | test($p))]
+                | sort_by(.createdAt) | last | .tagName // empty')
+
+          {
+            echo "prerelease=$prerelease"
+            echo "start_tag=$start_tag"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Bump manifest version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [ "$(jq -r .version "$MANIFEST")" = "$VERSION" ]; then
+            echo "manifest.json already at $VERSION"
+            exit 0
+          fi
+          # Edit only the version line to keep the file's formatting intact.
+          sed -i -E "s/^(  \"version\": \")[^\"]*(\")/\1${VERSION}\2/" "$MANIFEST"
+          [ "$(jq -r .version "$MANIFEST")" = "$VERSION" ] || { echo "::error::Failed to update $MANIFEST"; exit 1; }
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -qam "chore: release $VERSION"
+          git push origin HEAD:main
+
+      - name: Tag and publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          VERSION: ${{ inputs.version }}
+          PRERELEASE: ${{ steps.check.outputs.prerelease }}
+          START_TAG: ${{ steps.check.outputs.start_tag }}
+        run: |
+          set -euo pipefail
+          tag="v$VERSION"
+          git tag -a "$tag" -m "Release $VERSION"
+          git push origin "refs/tags/$tag"
+
+          args=(--repo "$REPO" --verify-tag --title "$VERSION" --generate-notes)
+          [ -n "$START_TAG" ] && args+=(--notes-start-tag "$START_TAG")
+          if [ "$PRERELEASE" = true ]; then
+            args+=(--prerelease --latest=false)
+          else
+            args+=(--latest)
+          fi
+          gh release create "$tag" "${args[@]}"
+          echo "Published https://github.com/$REPO/releases/tag/$tag" >> "$GITHUB_STEP_SUMMARY"
