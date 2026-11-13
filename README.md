@@ -19,6 +19,7 @@ Eaton xComfort integration with Home Assistant. Note that you need the **xComfor
 | Heating Actuator                | CHAU-01/01-10E | YES    | YES        |
 | Heating Valve                   | CHVZ-01/05     | YES    | YES        |
 | Motion Sensor                   | CBMD-02/0X     | YES    | YES        |
+| Water Sensor                    | CWGA-0D/01     | YES    | YES        |
 
 **CSAP-01/F5-12E** is not reporting power consumption frequently enough to be reliable. Recommend to use Shelly or similar instead.
 

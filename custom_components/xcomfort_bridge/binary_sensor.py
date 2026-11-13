@@ -10,7 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .device_info import get_motion_sensor_device_info
+from .device_info import get_motion_sensor_device_info, get_water_sensor_device_info
 from .entity_lifecycle import (
     init_entity_lifecycle,
     mark_entity_added,
@@ -18,7 +18,7 @@ from .entity_lifecycle import (
     subscribe_observable,
 )
 from .hub import XComfortHub
-from .xcomfort.devices import DoorSensor, MotionSensor, WindowSensor
+from .xcomfort.devices import DoorSensor, MotionSensor, WaterSensor, WindowSensor
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -48,6 +48,11 @@ async def async_setup_entry(
             XComfortMotionSensor(hub, device)
             for device in hub.devices
             if isinstance(device, MotionSensor)
+        )
+        sensors.extend(
+            XComfortWaterSensor(hub, device)
+            for device in hub.devices
+            if isinstance(device, WaterSensor)
         )
         async_add_entities(sensors)
 
@@ -141,3 +146,41 @@ class XComfortMotionSensor(BinarySensorEntity):
         """Handle motion state changes from the device."""
         self._attr_is_on = motion
         schedule_state_update_safely(self, "device.state")
+
+
+class XComfortWaterSensor(BinarySensorEntity):
+    """Representation of an xComfort water sensor (CWGA-0D/01)."""
+
+    _attr_has_entity_name = True
+    _attr_name = None
+    _attr_device_class = BinarySensorDeviceClass.MOISTURE
+
+    def __init__(self, hub: XComfortHub, device: WaterSensor) -> None:
+        """Initialize the water binary sensor."""
+        super().__init__()
+        self.hub = hub
+        self._device = device
+        self._attr_unique_id = f"water_{hub.identifier}_{device.device_id}"
+        self._attr_device_info = get_water_sensor_device_info(hub, device)
+        self._attr_is_on = device.water_detected
+        init_entity_lifecycle(self)
+
+    async def async_added_to_hass(self):
+        """Subscribe to water state updates."""
+        await super().async_added_to_hass()
+        mark_entity_added(self)
+        subscribe_observable(
+            self, self._device.state, self._state_change, "device.state"
+        )
+
+    def _state_change(self, water_detected: bool | None):
+        """Handle water state changes from the device."""
+        self._attr_is_on = water_detected
+        schedule_state_update_safely(self, "device.state")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str]:
+        """Return when the bridge last reported a water state change."""
+        if self._device.last_changed is None:
+            return {}
+        return {"last_changed_at": self._device.last_changed}
