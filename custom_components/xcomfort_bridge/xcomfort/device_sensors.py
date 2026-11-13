@@ -39,3 +39,49 @@ class WindowSensor(DoorWindowSensor):
 
 class DoorSensor(DoorWindowSensor):
     """Door sensor device class."""
+
+
+class MotionSensor(BridgeDevice):
+    """Motion sensor device (component type 29, device type 200).
+
+    Motion is reported on the device channel. Battery and signal live on
+    the component and are exposed by the generic diagnostic sensors.
+    """
+
+    def __init__(self, bridge, device_id, name, comp_id, payload):
+        """Initialize motion sensor device."""
+        BridgeDevice.__init__(self, bridge, device_id, name, comp_id)
+        self.payload = payload
+        self.motion: bool | None = None
+
+        if "curstate" in payload:
+            self.motion = self._parse_curstate(payload["curstate"])
+            self.state.on_next(self.motion)
+
+    @staticmethod
+    def _parse_curstate(value) -> bool | None:
+        try:
+            return int(value) != 0
+        except (TypeError, ValueError):
+            return None
+
+    def handle_state(self, payload):
+        """Handle motion sensor state updates."""
+        motion = self.motion
+        if "curstate" in payload:
+            motion = self._parse_curstate(payload["curstate"])
+        else:
+            _LOGGER.debug(
+                "Motion sensor %s: state update without curstate: %s",
+                self.name,
+                payload,
+            )
+
+        _LOGGER.debug(
+            "Motion sensor %s state update: %s (payload: %s)",
+            self.name,
+            "MOTION" if motion else "NO MOTION",
+            payload,
+        )
+        self.motion = motion
+        self.state.on_next(motion)

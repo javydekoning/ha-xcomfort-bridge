@@ -1,5 +1,6 @@
 FROM mcr.microsoft.com/devcontainers/python:3.15
 
+# hadolint ignore=DL3066
 USER vscode
 WORKDIR /home/vscode
 

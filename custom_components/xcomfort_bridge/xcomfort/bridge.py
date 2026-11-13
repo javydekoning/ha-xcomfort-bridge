@@ -19,6 +19,7 @@ from .devices import (
     Heater,
     HeatingValve,
     Light,
+    MotionSensor,
     RcTouch,
     Rocker,
     Shade,
@@ -485,6 +486,14 @@ class Bridge:
             # devType 200/201/211 — push switch or rocker channels on sensors
             # and binary inputs.  The component type determines the real role.
             component = self._comps.get(comp_id)
+            if (
+                component
+                and component.comp_type == ComponentTypes.MOTION_SENSOR
+                and dev_type == DeviceTypes.MOTION_SENSOR
+            ):
+                _LOGGER.debug("Creating MotionSensor device")
+                return MotionSensor(self, device_id, name, comp_id, payload)
+
             pushbutton_comp_types = (
                 ComponentTypes.PUSH_BUTTON_1_CHANNEL,
                 ComponentTypes.PUSH_BUTTON_2_CHANNEL,

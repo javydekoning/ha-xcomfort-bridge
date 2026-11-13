@@ -51,6 +51,7 @@ from .xcomfort.devices import (
     Heater,
     HeatingValve,
     Light,
+    MotionSensor,
     RcTouch,
     Rocker,
     Shade,
@@ -1644,6 +1645,9 @@ def _component_device_identifier(hub: XComfortHub, device) -> str:
         return f"heating_valve_{DOMAIN}_{hub.identifier}-{device.device_id}"
     if isinstance(device, RcTouch):
         return f"climate_{DOMAIN}_{hub.identifier}-{device.device_id}"
+    if isinstance(device, MotionSensor):
+        # Matches get_motion_sensor_device_info() in device_info.py.
+        return f"motion_{DOMAIN}_{hub.identifier}-{device.device_id}"
     if isinstance(device, Rocker):
         # Pushbuttons / remotes group all rocker channels under one HA
         # device keyed by comp_id (see event.py).
