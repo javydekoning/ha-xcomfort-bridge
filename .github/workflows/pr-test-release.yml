@@ -1,0 +1,192 @@
+---
+# Publishes a GitHub pre-release for a pull request once all CI workflows
+# pass, so the change can be installed and tested through HACS.
+#
+# - Only PRs carrying the `test-release` label get a release. A maintainer
+#   applies the label after reviewing the code: the release is published from
+#   this repository and offered to every HACS user with beta versions enabled.
+# - Version: <manifest base version>-pr<PR number>.<run number>,
+#   e.g. 0.8.0-pr165.12. Each new build replaces the PR's previous release.
+# - Releases are deleted when the PR is closed/merged or the label is removed.
+#
+# Security: this runs with a write token (workflow_run / pull_request_target),
+# so it must never execute code from the PR. It only checks out the PR to
+# edit manifest.json with jq and push a tag.
+name: PR test release
+
+on:
+  workflow_run:
+    workflows: ["Validate with hassfest", "MegaLinter", "RuffLinter"]
+    types: [completed]
+  pull_request_target:
+    types: [labeled, unlabeled, closed]
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+
+env:
+  LABEL: test-release
+  REQUIRED_WORKFLOWS: "Validate with hassfest,MegaLinter,RuffLinter"
+  MANIFEST: custom_components/xcomfort_bridge/manifest.json
+  COMMENT_MARKER: "<!-- pr-test-release -->"
+
+concurrency:
+  group: pr-test-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Publish test release
+    if: >-
+      (github.event_name == 'workflow_run'
+        && github.event.workflow_run.event == 'pull_request'
+        && github.event.workflow_run.conclusion == 'success')
+      || (github.event_name == 'pull_request_target'
+        && github.event.action == 'labeled'
+        && github.event.label.name == 'test-release')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR eligibility
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          WORKFLOW_RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+          PR_TARGET_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          skip() { echo "$1; skipping."; echo "eligible=false" >> "$GITHUB_OUTPUT"; exit 0; }
+
+          if [ "$EVENT" = workflow_run ]; then
+            # workflow_run.pull_requests is empty for fork PRs; look the PR up by head SHA.
+            pr=$(gh pr list --repo "$REPO" --state open --limit 100 --json number,headRefOid \
+              --jq "map(select(.headRefOid == \"$WORKFLOW_RUN_SHA\")) | .[0].number // empty")
+          else
+            pr="$PR_TARGET_NUMBER"
+          fi
+          [ -n "$pr" ] || skip "No open PR has $WORKFLOW_RUN_SHA as head"
+
+          info=$(gh pr view "$pr" --repo "$REPO" --json headRefOid,labels,state)
+          [ "$(jq -r .state <<<"$info")" = OPEN ] || skip "PR #$pr is not open"
+          jq -e --arg l "$LABEL" 'any(.labels[]; .name == $l)' <<<"$info" >/dev/null \
+            || skip "PR #$pr does not have the '$LABEL' label"
+          sha=$(jq -r .headRefOid <<<"$info")
+
+          # Every required workflow must have succeeded on the PR's current head.
+          runs=$(gh api "repos/$REPO/actions/runs?head_sha=$sha&event=pull_request&per_page=100" \
+            --jq '.workflow_runs')
+          IFS=, read -ra required <<<"$REQUIRED_WORKFLOWS"
+          for wf in "${required[@]}"; do
+            result=$(jq -r --arg n "$wf" '
+              [.[] | select(.name == $n)] | sort_by(.created_at) | last
+              | if . == null then "missing"
+                elif .status != "completed" then "pending"
+                else .conclusion end' <<<"$runs")
+            [ "$result" = success ] || skip "'$wf' is $result on $sha"
+          done
+
+          # Several workflow_run events fire per commit; only release it once.
+          for tag in $(gh release list --repo "$REPO" --limit 200 --json tagName \
+              --jq ".[].tagName | select(test(\"-pr${pr}\\\\.[0-9]+$\"))"); do
+            if gh release view "$tag" --repo "$REPO" --json body --jq .body | grep -qF "$sha"; then
+              skip "$tag already exists for $sha"
+            fi
+          done
+
+          {
+            echo "eligible=true"
+            echo "number=$pr"
+            echo "sha=$sha"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Check out PR head
+        if: steps.pr.outputs.eligible == 'true'
+        uses: actions/checkout@v7
+        with:
+          ref: refs/pull/${{ steps.pr.outputs.number }}/head
+
+      - name: Tag and publish pre-release
+        id: release
+        if: steps.pr.outputs.eligible == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ steps.pr.outputs.number }}
+          SHA: ${{ steps.pr.outputs.sha }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          [ "$(git rev-parse HEAD)" = "$SHA" ] || { echo "PR head moved since eligibility check"; exit 1; }
+
+          base=$(jq -r .version "$MANIFEST" | sed 's/[-+].*//')
+          version="${base}-pr${PR}.${RUN_NUMBER}"
+          tag="v${version}"
+
+          jq --arg v "$version" '.version = $v' "$MANIFEST" > manifest.tmp
+          mv manifest.tmp "$MANIFEST"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -qam "Test release $version for PR #$PR"
+          git tag -a "$tag" -m "Test release for PR #$PR ($SHA)"
+          git push origin "refs/tags/$tag"
+
+          gh release create "$tag" --repo "$REPO" --verify-tag --prerelease --latest=false \
+            --title "$version (PR #$PR test build)" \
+            --notes "Automated test build of #$PR at commit $SHA. Not for general use; deleted when the PR is closed."
+
+          # Drop this PR's older test releases.
+          gh release list --repo "$REPO" --limit 200 --json tagName \
+            --jq ".[].tagName | select(test(\"-pr${PR}\\\\.[0-9]+$\"))" \
+            | grep -vxF "$tag" \
+            | while read -r old; do gh release delete "$old" --repo "$REPO" --cleanup-tag --yes; done
+
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Comment install instructions on PR
+        if: steps.pr.outputs.eligible == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ steps.pr.outputs.number }}
+          SHA: ${{ steps.pr.outputs.sha }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          body="$COMMENT_MARKER
+          ### Test release: [\`$TAG\`](https://github.com/$REPO/releases/tag/$TAG)
+
+          Built from $SHA. To install it via HACS: open **xComfort Bridge** in HACS, choose **⋮ → Redownload**, select \`$TAG\` and restart Home Assistant.
+
+          This release is deleted automatically when the PR is closed or merged."
+          id=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
+            --jq ".[] | select(.body | startswith(\"$COMMENT_MARKER\")) | .id" | head -n1)
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$id" -f body="$body" >/dev/null
+          else
+            gh pr comment "$PR" --repo "$REPO" --body "$body"
+          fi
+
+  cleanup:
+    name: Delete test releases
+    if: >-
+      github.event_name == 'pull_request_target'
+      && (github.event.action == 'closed'
+        || (github.event.action == 'unlabeled' && github.event.label.name == 'test-release'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete this PR's test releases and tags
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          gh release list --repo "$REPO" --limit 200 --json tagName \
+            --jq ".[].tagName | select(test(\"-pr${PR}\\\\.[0-9]+$\"))" \
+            | while read -r tag; do
+                echo "Deleting $tag"
+                gh release delete "$tag" --repo "$REPO" --cleanup-tag --yes
+              done
