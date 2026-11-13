@@ -2,6 +2,7 @@
 
 import logging
 
+from .constants import DeviceStateUpdateText
 from .device_base import BridgeDevice
 
 _LOGGER = logging.getLogger(__name__)
@@ -85,3 +86,58 @@ class MotionSensor(BridgeDevice):
         )
         self.motion = motion
         self.state.on_next(motion)
+
+
+# Info text codes that report the water state; their `value` is the time of
+# the last state change as "DD.MM.YYYY HH:MM" (bridge local time).
+_WATER_STATE_INFO_CODES = {
+    str(DeviceStateUpdateText.WATER_DETECTED),
+    str(DeviceStateUpdateText.WATER_OK),
+    str(DeviceStateUpdateText.WATER_SENSOR_UNKNOWN),
+}
+
+
+class WaterSensor(BridgeDevice):
+    """Water sensor channel (component type 85, device type 499).
+
+    Hardware: CWGA-0D/01. The wet/dry state is reported on the device
+    channel via `curstate`: 0 = dry, 1 = water detected, anything else
+    (2 after a bridge restart) = unknown. Battery and signal live on the
+    component and are exposed by the generic diagnostic sensors.
+    """
+
+    def __init__(self, bridge, device_id, name, comp_id, payload):
+        """Initialize water sensor device."""
+        BridgeDevice.__init__(self, bridge, device_id, name, comp_id)
+        self.payload = payload
+        self.water_detected: bool | None = None
+        self.last_changed: str | None = None
+
+    @staticmethod
+    def _parse_curstate(value) -> bool | None:
+        try:
+            state = int(value)
+        except (TypeError, ValueError):
+            return None
+        if state == 0:
+            return False
+        if state == 1:
+            return True
+        return None
+
+    def handle_state(self, payload):
+        """Handle water sensor state updates."""
+        if "curstate" in payload:
+            self.water_detected = self._parse_curstate(payload["curstate"])
+
+        for item in payload.get("info") or []:
+            if str(item.get("text")) in _WATER_STATE_INFO_CODES and item.get("value"):
+                self.last_changed = item["value"]
+
+        _LOGGER.debug(
+            "Water sensor %s state update: %s (payload: %s)",
+            self.name,
+            {True: "WATER", False: "DRY", None: "UNKNOWN"}[self.water_detected],
+            payload,
+        )
+        self.state.on_next(self.water_detected)

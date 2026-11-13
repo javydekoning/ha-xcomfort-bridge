@@ -55,6 +55,7 @@ from .xcomfort.devices import (
     RcTouch,
     Rocker,
     Shade,
+    WaterSensor,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -1648,6 +1649,9 @@ def _component_device_identifier(hub: XComfortHub, device) -> str:
     if isinstance(device, MotionSensor):
         # Matches get_motion_sensor_device_info() in device_info.py.
         return f"motion_{DOMAIN}_{hub.identifier}-{device.device_id}"
+    if isinstance(device, WaterSensor):
+        # Matches get_water_sensor_device_info() in device_info.py.
+        return f"water_{DOMAIN}_{hub.identifier}-{device.device_id}"
     if isinstance(device, Rocker):
         # Pushbuttons / remotes group all rocker channels under one HA
         # device keyed by comp_id (see event.py).

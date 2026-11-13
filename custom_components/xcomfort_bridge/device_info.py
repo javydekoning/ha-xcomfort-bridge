@@ -12,7 +12,7 @@ from .xcomfort.constants import ComponentTypes
 if TYPE_CHECKING:
     from .hub import XComfortHub
     from .xcomfort.comp import Comp
-    from .xcomfort.devices import HeatingValve, MotionSensor, RcTouch
+    from .xcomfort.devices import HeatingValve, MotionSensor, RcTouch, WaterSensor
 
 
 def _get_rctouch_component(hub: XComfortHub, device: RcTouch) -> Comp | None:
@@ -84,6 +84,24 @@ def get_motion_sensor_device_info(hub: XComfortHub, device: MotionSensor) -> Dev
         or f"Motion Sensor {device.device_id}",
         manufacturer="Eaton",
         model="Motion Sensor",
+        sw_version=comp_payload.get("versionFW"),
+        hw_version=comp_payload.get("versionHW"),
+        via_device=(DOMAIN, hub.hub_id),
+    )
+
+
+def get_water_sensor_device_info(hub: XComfortHub, device: WaterSensor) -> DeviceInfo:
+    """Return stable device metadata for a water sensor."""
+    comp = hub.bridge.comps.get(device.comp_id) if device.comp_id is not None else None
+    comp_payload = comp.payload if comp is not None else {}
+
+    return DeviceInfo(
+        identifiers={(DOMAIN, f"water_{DOMAIN}_{hub.identifier}-{device.device_id}")},
+        name=(comp.name if comp is not None else None)
+        or device.name
+        or f"Water Sensor {device.device_id}",
+        manufacturer="Eaton",
+        model="Water Sensor CWGA-0D/01",
         sw_version=comp_payload.get("versionFW"),
         hw_version=comp_payload.get("versionHW"),
         via_device=(DOMAIN, hub.hub_id),

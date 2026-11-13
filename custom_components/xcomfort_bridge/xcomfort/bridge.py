@@ -23,6 +23,7 @@ from .devices import (
     RcTouch,
     Rocker,
     Shade,
+    WaterSensor,
     WindowSensor,
 )
 
@@ -468,6 +469,10 @@ class Bridge:
                     del self._devices[virtual_rocker_id]
 
             return rctouch
+
+        if dev_type == DeviceTypes.WATER_SENSOR:
+            _LOGGER.debug("Creating WaterSensor device")
+            return WaterSensor(self, device_id, name, comp_id, payload)
 
         if dev_type == DeviceTypes.SWITCH:
             component: Comp | None = self._comps.get(comp_id)
