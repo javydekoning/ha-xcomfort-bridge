@@ -140,7 +140,7 @@ jobs:
           # Drop this PR's older test releases.
           gh release list --repo "$REPO" --limit 200 --json tagName \
             --jq ".[].tagName | select(test(\"-pr${PR}\\\\.[0-9]+$\"))" \
-            | grep -vxF "$tag" \
+            | { grep -vxF "$tag" || true; } \
             | while read -r old; do gh release delete "$old" --repo "$REPO" --cleanup-tag --yes; done
 
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
