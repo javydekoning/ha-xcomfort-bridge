@@ -2,7 +2,6 @@
 
 import logging
 
-
 from .device_base import BridgeDevice
 
 _LOGGER = logging.getLogger(__name__)
