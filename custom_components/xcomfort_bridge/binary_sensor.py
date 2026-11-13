@@ -8,8 +8,10 @@ from homeassistant.components.binary_sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .const import DOMAIN
 from .device_info import get_motion_sensor_device_info, get_water_sensor_device_info
 from .entity_lifecycle import (
     init_entity_lifecycle,
@@ -18,9 +20,83 @@ from .entity_lifecycle import (
     subscribe_observable,
 )
 from .hub import XComfortHub
-from .xcomfort.devices import DoorSensor, MotionSensor, WaterSensor, WindowSensor
+from .xcomfort.comp import Comp
+from .xcomfort.constants import ComponentMode, ComponentTypes, DeviceUsage
+from .xcomfort.devices import (
+    DoorSensor,
+    MotionSensor,
+    Rocker,
+    WaterSensor,
+    WindowSensor,
+)
 
 _LOGGER = logging.getLogger(__name__)
+
+_BINARY_INPUT_MODELS = {
+    ComponentTypes.BINARY_INPUT_230V: "Binary Input 230V",
+    ComponentTypes.BINARY_INPUT_BATTERY: "Binary Input Battery",
+}
+_BINARY_INPUT_MODE_NAMES = {
+    ComponentMode.MODE_PUSHBUTTON: "pushbutton",
+    ComponentMode.MODE_SWITCH: "switch",
+    ComponentMode.MODE_PUSHBUTTON_SWITCH: "pushbutton_switch",
+    ComponentMode.MODE_ROCKER: "rocker",
+}
+
+
+def _binary_input_mode(comp: Comp) -> ComponentMode | None:
+    """Return the binary input component's configured mode, if known."""
+    try:
+        return ComponentMode(int(comp.payload.get("mode")))
+    except (TypeError, ValueError):
+        return None
+
+
+def _binary_input_sensors(hub: XComfortHub) -> list["XComfortBinaryInputSensor"]:
+    """Create contact-state sensors for binary input channels (CBEU / CAEU).
+
+    Mirrors the xComfort app, which only treats a binary input channel as a
+    binary state when its component is in Switch mode (1303) and the channel
+    is a normal input (usage BIN_NORMAL or unset). Pushbutton modes (1302,
+    1304) report curstate too but the app does not interpret it as a state,
+    so those sensors are created disabled by default. Rocker mode (1305) and
+    heating/cooling changeover contacts get no sensor.
+    """
+    sensors = []
+    for device in hub.devices:
+        if not isinstance(device, Rocker):
+            continue
+        comp = hub.bridge.comps.get(device.comp_id)
+        if comp is None or comp.comp_type not in _BINARY_INPUT_MODELS:
+            continue
+        usage = device.payload.get("usage")
+        if usage is not None and usage != DeviceUsage.BIN_NORMAL:
+            _LOGGER.debug(
+                "Binary input %s has usage %s (heating/cooling contact), skipping",
+                device.name,
+                usage,
+            )
+            continue
+        mode = _binary_input_mode(comp)
+        if mode == ComponentMode.MODE_SWITCH:
+            enabled_default = True
+        elif mode in (
+            ComponentMode.MODE_PUSHBUTTON,
+            ComponentMode.MODE_PUSHBUTTON_SWITCH,
+        ):
+            enabled_default = False
+        else:
+            _LOGGER.debug(
+                "Binary input %s on %s has mode %s, no contact sensor",
+                device.name,
+                comp.name,
+                comp.payload.get("mode"),
+            )
+            continue
+        sensors.append(
+            XComfortBinaryInputSensor(hub, device, comp, mode, enabled_default)
+        )
+    return sensors
 
 
 async def async_setup_entry(
@@ -54,6 +130,7 @@ async def async_setup_entry(
             for device in hub.devices
             if isinstance(device, WaterSensor)
         )
+        sensors.extend(_binary_input_sensors(hub))
         async_add_entities(sensors)
 
     entry.async_create_task(hass, _wait_for_hub_then_setup())
@@ -184,3 +261,59 @@ class XComfortWaterSensor(BinarySensorEntity):
         if self._device.last_changed is None:
             return {}
         return {"last_changed_at": self._device.last_changed}
+
+
+class XComfortBinaryInputSensor(BinarySensorEntity):
+    """Contact state of an xComfort binary input channel.
+
+    No device class: the bridge doesn't know what is wired to the input or
+    whether the contact is normally open or closed, so users pick the
+    device class ("Show as") in Home Assistant.
+    """
+
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        hub: XComfortHub,
+        device: Rocker,
+        comp: Comp,
+        mode: ComponentMode,
+        enabled_default: bool,
+    ) -> None:
+        """Initialize the binary input sensor."""
+        super().__init__()
+        self.hub = hub
+        self._device = device
+        self._attr_name = device.name
+        self._attr_unique_id = f"binary_input_{hub.identifier}_{device.device_id}"
+        self._attr_entity_registry_enabled_default = enabled_default
+        self._attr_extra_state_attributes = {
+            "input_mode": _BINARY_INPUT_MODE_NAMES[mode]
+        }
+        # Same identifier as event.py / the diagnostic sensors, so battery
+        # and signal land on this device card.
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, f"event_{DOMAIN}_comp_{comp.comp_id}")},
+            name=comp.name,
+            manufacturer="Eaton",
+            model=_BINARY_INPUT_MODELS[comp.comp_type],
+            sw_version=comp.payload.get("versionFW"),
+            hw_version=comp.payload.get("versionHW"),
+            via_device=(DOMAIN, hub.hub_id),
+        )
+        self._attr_is_on = device.contact_state
+        init_entity_lifecycle(self)
+
+    async def async_added_to_hass(self):
+        """Subscribe to channel state updates."""
+        await super().async_added_to_hass()
+        mark_entity_added(self)
+        subscribe_observable(
+            self, self._device.state, self._state_change, "device.state"
+        )
+
+    def _state_change(self, _state) -> None:
+        """Re-read the strictly parsed contact state on every update."""
+        self._attr_is_on = self._device.contact_state
+        schedule_state_update_safely(self, "device.state")

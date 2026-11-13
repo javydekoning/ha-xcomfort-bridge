@@ -6,20 +6,21 @@ Eaton xComfort integration with Home Assistant. Note that you need the **xComfor
 
 ✅ for "Yes, "❌ for "No" or ⚠️ for "Partial" functionality.
 
-| Device                          | Device Type    | Tested | Functional |
-|---------------------------------|----------------|--------|------------|
-| Push Button 1-Fold              | CTAA-01/04     | YES    | YES        |
-| Push Button 2-Fold              | CTAA-02/04     | YES    | YES        |
-| Push Button 4-Fold              | CTAA-04/04     | YES    | YES        |
-| Push Button MultiSensor 1-Fold  | CTSA-01/04     | YES    | YES        |
-| Push Button MultiSensor 2-Fold  | CTSA-02/04     | YES    | YES        |
-| Push Button MultiSensor 4-Fold  | CTSA-04/04     | YES    | YES        |
-| Remote Control 2-Channel (mini) | CHSZ-02/02     | YES    | YES        |
-| Switching Plug                  | CSAP-01/F5-12E | YES    | No         |
-| Heating Actuator                | CHAU-01/01-10E | YES    | YES        |
-| Heating Valve                   | CHVZ-01/05     | YES    | YES        |
-| Motion Sensor                   | CBMD-02/0X     | YES    | YES        |
+| Device                          | Device Type                                                               | Tested | Functional |
+|---------------------------------|---------------------------------------------------------------------------|--------|------------|
+| Push Button 1-Fold              | CTAA-01/04                                                                | YES    | YES        |
+| Push Button 2-Fold              | CTAA-02/04                                                                | YES    | YES        |
+| Push Button 4-Fold              | CTAA-04/04                                                                | YES    | YES        |
+| Push Button MultiSensor 1-Fold  | CTSA-01/04                                                                | YES    | YES        |
+| Push Button MultiSensor 2-Fold  | CTSA-02/04                                                                | YES    | YES        |
+| Push Button MultiSensor 4-Fold  | CTSA-04/04                                                                | YES    | YES        |
+| Remote Control 2-Channel (mini) | CHSZ-02/02                                                                | YES    | YES        |
+| Switching Plug                  | CSAP-01/F5-12E                                                            | YES    | No         |
+| Heating Actuator                | CHAU-01/01-10E                                                            | YES    | YES        |
+| Heating Valve                   | CHVZ-01/05                                                                | YES    | YES        |
+| Motion Sensor                   | CBMD-02/0X                                                                | YES    | YES        |
 | Water Sensor                    | [CWGA-0D/01](https://github.com/javydekoning/ha-xcomfort-bridge/pull/168) | YES    | YES        |
+| Binary Input Battery            | [CBEU-02/02](https://github.com/javydekoning/ha-xcomfort-bridge/pull/169) | NO     | YES        |
 
 **CSAP-01/F5-12E** is not reporting power consumption frequently enough to be reliable. Recommend to use Shelly or similar instead.
 
