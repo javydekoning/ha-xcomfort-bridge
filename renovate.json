@@ -16,5 +16,12 @@
       "depNameTemplate": "{{{package}}}",
       "versioningTemplate": "pep440"
     }
+  ],
+  "packageRules": [
+    {
+      "description": "pycryptodome is shared with HA core and other integrations; keep a loose range that HA's bundled version satisfies instead of pinning (pinning 4.x broke roborock and xcomfort at runtime)",
+      "matchPackageNames": ["pycryptodome"],
+      "enabled": false
+    }
   ]
 }
