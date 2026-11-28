@@ -36,7 +36,12 @@ from .const import (
     CONF_POWER_ENERGY_SECTION,
     DOMAIN,
 )
-from .device_info import get_heating_valve_device_info, get_rctouch_device_info
+from .device_info import (
+    get_heating_valve_device_info,
+    get_rctouch_device_info,
+    get_temperature_sensor_device_info,
+    temperature_sensor_device_identifier,
+)
 from .entity_lifecycle import (
     async_write_state_safely,
     init_entity_lifecycle,
@@ -55,6 +60,7 @@ from .xcomfort.devices import (
     RcTouch,
     Rocker,
     Shade,
+    TemperatureSensor,
     WaterSensor,
 )
 
@@ -204,6 +210,11 @@ def _build_device_sensors(
             )
             sensors.append(XComfortAppliancePowerSensor(hub, device))
             sensors.append(XComfortApplianceEnergySensor(hub, device))
+        elif isinstance(device, TemperatureSensor):
+            _LOGGER.debug(
+                "Adding temperature sensor for temperature input %s", device.name
+            )
+            sensors.append(XComfortTemperatureInputSensor(hub, device))
         elif isinstance(device, Rocker) and device.has_sensors:
             comp = device.bridge._comps.get(device.comp_id)  # noqa: SLF001
             if not comp:
@@ -1622,6 +1633,49 @@ class XComfortHeatingValvePositionSensor(SensorEntity):
         return self._state and self._state.valve_position
 
 
+class XComfortTemperatureInputSensor(SensorEntity):
+    """Temperature reading of a temperature sensor input (CTEU-02/01).
+
+    One entity per input channel. All inputs of a component share the
+    component's device card, so the entity is named after the channel
+    (e.g. "Outdoor probe") unless that equals the component name.
+    """
+
+    _attr_has_entity_name = True
+    _attr_should_poll = False
+    _attr_device_class = SensorDeviceClass.TEMPERATURE
+    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, hub: XComfortHub, device: TemperatureSensor) -> None:
+        """Initialise sensor tied to a temperature input channel."""
+        self.hub = hub
+        self._device = device
+        init_entity_lifecycle(self)
+        self._attr_unique_id = (
+            f"temperature_input_{DOMAIN}_{hub.identifier}-{device.device_id}"
+        )
+        self._attr_device_info = get_temperature_sensor_device_info(hub, device)
+        comp = hub.bridge.comps.get(device.comp_id)
+        self._attr_name = (
+            None if comp is not None and device.name == comp.name else device.name
+        )
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to device state so new readings flow to the UI."""
+        await super().async_added_to_hass()
+        mark_entity_added(self)
+        subscribe_observable(self, self._device.state, self._on_state, "device.state")
+
+    def _on_state(self, _state) -> None:
+        async_write_state_safely(self, "device.state")
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the temperature in °C, or None if unknown."""
+        return self._device.temperature
+
+
 def _component_device_identifier(hub: XComfortHub, device) -> str:
     """Return the HA-device identifier of the platform that owns `device`.
 
@@ -1652,6 +1706,8 @@ def _component_device_identifier(hub: XComfortHub, device) -> str:
     if isinstance(device, WaterSensor):
         # Matches get_water_sensor_device_info() in device_info.py.
         return f"water_{DOMAIN}_{hub.identifier}-{device.device_id}"
+    if isinstance(device, TemperatureSensor):
+        return temperature_sensor_device_identifier(hub, device.comp_id)
     if isinstance(device, Rocker):
         # Pushbuttons / remotes group all rocker channels under one HA
         # device keyed by comp_id (see event.py).

@@ -141,3 +141,65 @@ class WaterSensor(BridgeDevice):
             payload,
         )
         self.state.on_next(self.water_detected)
+
+
+# Info text codes carrying a temperature reading on a temperature sensor
+# channel, in order of preference. The value is the bare number in °C.
+_TEMPERATURE_INFO_CODES = (
+    str(DeviceStateUpdateText.AMBIENT_TEMPERATURE),
+    str(DeviceStateUpdateText.PT1000_TEMPERATURE),
+)
+# Info text codes reported instead of a reading when the sensor has no
+# valid value (e.g. probe disconnected).
+_TEMPERATURE_INVALID_INFO_CODES = {
+    str(DeviceStateUpdateText.VALUE_UNKNOWN),
+    str(DeviceStateUpdateText.VALUE_ERROR),
+}
+
+
+class TemperatureSensor(BridgeDevice):
+    """Temperature sensor channel (component type 23, device type 410).
+
+    Hardware: CTEU-02/01 battery temperature input. Each sensor input is
+    its own device channel; the reading arrives in the channel's info[]
+    array under text code 1222, e.g. {"text": "1222", "value": "6.6"}.
+    Battery and signal live on the component and are exposed by the
+    generic diagnostic sensors.
+    """
+
+    def __init__(self, bridge, device_id, name, comp_id, payload):
+        """Initialize temperature sensor device."""
+        BridgeDevice.__init__(self, bridge, device_id, name, comp_id)
+        self.payload = payload
+        self.temperature: float | None = None
+
+    def _parse_temperature(self, info: list[dict]) -> tuple[bool, float | None]:
+        """Return (found, temperature) from an info[] array.
+
+        `found` is False when the array carries no temperature-related
+        entry at all, so partial updates keep the last known reading.
+        """
+        by_code = {str(item.get("text")): item for item in info}
+        for code in _TEMPERATURE_INFO_CODES:
+            if code in by_code:
+                try:
+                    return True, float(by_code[code].get("value"))
+                except (TypeError, ValueError):
+                    return True, None
+        if _TEMPERATURE_INVALID_INFO_CODES & by_code.keys():
+            return True, None
+        return False, None
+
+    def handle_state(self, payload):
+        """Handle temperature sensor state updates."""
+        found, temperature = self._parse_temperature(payload.get("info") or [])
+        if found:
+            self.temperature = temperature
+
+        _LOGGER.debug(
+            "Temperature sensor %s state update: %s°C (payload: %s)",
+            self.name,
+            self.temperature,
+            payload,
+        )
+        self.state.on_next(self.temperature)

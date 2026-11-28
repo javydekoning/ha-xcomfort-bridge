@@ -18,6 +18,7 @@ from .device_sensors import (
     DoorSensor,
     DoorWindowSensor,
     MotionSensor,
+    TemperatureSensor,
     WaterSensor,
     WindowSensor,
 )
@@ -56,6 +57,7 @@ __all__ = [
     "Shade",
     "ShadeState",
     "SwitchState",
+    "TemperatureSensor",
     "WaterSensor",
     "WindowSensor",
 ]
