@@ -21,6 +21,10 @@ class Rocker(BridgeDevice):
         self.comp_id = comp_id
         self.payload = payload
         self.is_on: bool | None = None
+        # Strictly parsed curstate (0 → False, 1 → True, else None) for
+        # binary inputs exposing a contact state; is_on treats any non-zero
+        # value (e.g. 2 = unknown) as on.
+        self.contact_state: bool | None = None
         # Dedicated stream for button edges only (press/release), used by EventEntity.
         self.button_state = rx.subject.BehaviorSubject(None)
         self._last_button_emit_state: bool | None = None
@@ -32,12 +36,26 @@ class Rocker(BridgeDevice):
         self._comp_subscribed = False
         if "curstate" in payload:
             self.is_on = bool(payload["curstate"])
+            self.contact_state = self.parse_contact_state(payload["curstate"])
 
         # Try to wire up multisensor plumbing now. If the component isn't
         # known yet (SET_ALL_DATA delivers comps and devices separately),
         # Bridge._handle_SET_ALL_DATA calls wire_up_sensor_companion again
         # after all devices are loaded.
         self.wire_up_sensor_companion()
+
+    @staticmethod
+    def parse_contact_state(value) -> bool | None:
+        """Map curstate to a contact state like the app does: 0 off, 1 on."""
+        try:
+            state = int(value)
+        except (TypeError, ValueError):
+            return None
+        if state == 0:
+            return False
+        if state == 1:
+            return True
+        return None
 
     @property
     def name_with_controlled(self) -> str:
@@ -269,6 +287,7 @@ class Rocker(BridgeDevice):
         button_event_state: bool | None = None
         if "curstate" in payload:
             self.is_on = bool(payload["curstate"])
+            self.contact_state = self.parse_contact_state(payload["curstate"])
             button_event_state = self.is_on
 
         # For multisensor rockers, include sensor data in state
