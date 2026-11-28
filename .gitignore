@@ -145,6 +145,7 @@ config/
 arbeidsmappe/
 
 # apk decompiled
+*.xapk
 apk/
 .devcontainer/devcontainer-lock.json
 .DS_Store
