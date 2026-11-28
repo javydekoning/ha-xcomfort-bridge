@@ -12,7 +12,13 @@ from .xcomfort.constants import ComponentTypes
 if TYPE_CHECKING:
     from .hub import XComfortHub
     from .xcomfort.comp import Comp
-    from .xcomfort.devices import HeatingValve, MotionSensor, RcTouch, WaterSensor
+    from .xcomfort.devices import (
+        HeatingValve,
+        MotionSensor,
+        RcTouch,
+        TemperatureSensor,
+        WaterSensor,
+    )
 
 
 def _get_rctouch_component(hub: XComfortHub, device: RcTouch) -> Comp | None:
@@ -102,6 +108,37 @@ def get_water_sensor_device_info(hub: XComfortHub, device: WaterSensor) -> Devic
         or f"Water Sensor {device.device_id}",
         manufacturer="Eaton",
         model="Water Sensor CWGA-0D/01",
+        sw_version=comp_payload.get("versionFW"),
+        hw_version=comp_payload.get("versionHW"),
+        via_device=(DOMAIN, hub.hub_id),
+    )
+
+
+def temperature_sensor_device_identifier(hub: XComfortHub, comp_id) -> str:
+    """Return the HA-device identifier of a temperature sensor component.
+
+    Keyed by component rather than channel so every input of a
+    multi-input CTEU shares one device card.
+    """
+    return f"temperature_sensor_{DOMAIN}_{hub.identifier}-comp_{comp_id}"
+
+
+def get_temperature_sensor_device_info(
+    hub: XComfortHub, device: TemperatureSensor
+) -> DeviceInfo:
+    """Return stable device metadata for a temperature sensor component."""
+    comp = hub.bridge.comps.get(device.comp_id) if device.comp_id is not None else None
+    comp_payload = comp.payload if comp is not None else {}
+
+    return DeviceInfo(
+        identifiers={
+            (DOMAIN, temperature_sensor_device_identifier(hub, device.comp_id))
+        },
+        name=(comp.name if comp is not None else None)
+        or device.name
+        or f"Temperature Sensor {device.device_id}",
+        manufacturer="Eaton",
+        model="Temperature Sensor",
         sw_version=comp_payload.get("versionFW"),
         hw_version=comp_payload.get("versionHW"),
         via_device=(DOMAIN, hub.hub_id),

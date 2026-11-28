@@ -23,6 +23,7 @@ from .devices import (
     RcTouch,
     Rocker,
     Shade,
+    TemperatureSensor,
     WaterSensor,
     WindowSensor,
 )
@@ -473,6 +474,15 @@ class Bridge:
         if dev_type == DeviceTypes.WATER_SENSOR:
             _LOGGER.debug("Creating WaterSensor device")
             return WaterSensor(self, device_id, name, comp_id, payload)
+
+        if dev_type == DeviceTypes.TEMP_SENSOR:
+            # Only standalone temperature sensor components (CTEU-02/01).
+            # Rockers on multisensor variants may use a 410 channel as their
+            # temp companion and expect a generic DeviceState stream from it.
+            temp_comp = self._comps.get(comp_id)
+            if temp_comp and temp_comp.comp_type == ComponentTypes.TEMPERATURE_SENSOR:
+                _LOGGER.debug("Creating TemperatureSensor device")
+                return TemperatureSensor(self, device_id, name, comp_id, payload)
 
         if dev_type == DeviceTypes.SWITCH:
             component: Comp | None = self._comps.get(comp_id)
